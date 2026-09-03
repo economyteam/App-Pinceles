@@ -81,13 +81,27 @@
   .keypad{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px; }
   .key{ padding:16px 0; border-radius:14px; background:var(--blanco); border:1.5px solid #E7DCC3; font-size:20px; font-weight:800; cursor:pointer; }
   .key:active{ background:var(--crema-2); }
-  .toast{ position:absolute; bottom:96px; left:50%; transform:translateX(-50%); background:var(--tinta); color:var(--blanco); padding:11px 20px; border-radius:30px; font-size:13.5px; font-weight:700; z-index:50; box-shadow:0 8px 20px rgba(0,0,0,.25); opacity:0; transition:opacity .25s ease; pointer-events:none; }
+  .toast{ position:absolute; bottom:96px; left:50%; transform:translateX(-50%); background:var(--tinta); color:var(--blanco); padding:11px 20px; border-radius:30px; font-size:13.5px; font-weight:700; z-index:50; box-shadow:0 8px 20px rgba(0,0,0,.25); opacity:0; transition:opacity .25s ease; pointer-events:none; max-width:88%; text-align:center; }
   .toast.show{ opacity:1; }
+  .toast.warn{ background:#B4551D; }
   .row-between{ display:flex; align-items:center; justify-content:space-between; }
   .muted{ opacity:.6; font-size:12.5px; }
   .banner-min{ background: linear-gradient(135deg, var(--dorado-suave), var(--dorado)); border-radius:18px; padding:16px; margin-bottom:12px; text-align:center; }
   @keyframes spin{ to{transform:rotate(360deg);} }
-  @keyframes pintar { 0% { transform: rotate(-15deg) translateX(-2px); } 100% { transform: rotate(15deg) translateX(2px); } }
+
+  /* ---- Loader "pincel escribiendo Pinceles" ---- */
+  .brush-loader{ position:relative; width:170px; height:52px; margin:0 auto; }
+  .brush-text{ position:absolute; left:0; top:0; width:100%; text-align:left; font-family:'Caveat',cursive; font-weight:700; font-size:38px; color:var(--rojo); white-space:nowrap; line-height:1; clip-path: inset(0 100% 0 0); animation: brushReveal 1.6s ease-in-out infinite; }
+  @keyframes brushReveal{ 0%{ clip-path: inset(0 100% 0 0); } 55%{ clip-path: inset(0 0% 0 0); } 100%{ clip-path: inset(0 0% 0 0); } }
+  .brush-icon{ position:absolute; top:-4px; left:-8px; width:26px; height:26px; animation: brushMove 1.6s ease-in-out infinite; transform-origin: bottom left; }
+  @keyframes brushMove{
+    0%   { left:-8px;  transform: rotate(-25deg); opacity:1; }
+    55%  { left:148px; transform: rotate(12deg);  opacity:1; }
+    58%  { left:148px; transform: rotate(12deg);  opacity:0; }
+    60%  { left:-8px;  transform: rotate(-25deg); opacity:0; }
+    100% { left:-8px;  transform: rotate(-25deg); opacity:1; }
+  }
+  .loader-label{ font-weight:800; color:var(--tinta); font-size:12.5px; letter-spacing:.06em; text-transform:uppercase; opacity:.55; margin-top:4px; }
 </style>
 </head>
 <body>
@@ -103,14 +117,17 @@
   <div class="bottomnav" id="bottomNav"></div>
   <div id="modalRoot"></div>
   <div class="toast" id="toast"></div>
-  
+
   <div id="loader" style="position:fixed; inset:0; z-index:9999; background:rgba(43,24,16,.3); display:none; align-items:center; justify-content:center;">
-    <div style="background:var(--blanco); padding:20px 30px; border-radius:24px; box-shadow:var(--sombra); display:flex; flex-direction:column; align-items:center; gap:12px;">
-      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--rojo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: pintar 0.6s ease-in-out infinite alternate; transform-origin: bottom left;">
-        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-        <path d="M5.5 15.5L2 22l6.5-3.5"></path>
-      </svg>
-      <span style="font-weight:800; color:var(--tinta); font-size:14px; letter-spacing:0.03em;">Pintando datos...</span>
+    <div style="background:var(--blanco); padding:26px 30px; border-radius:24px; box-shadow:var(--sombra); display:flex; flex-direction:column; align-items:center; gap:8px;">
+      <div class="brush-loader">
+        <span class="brush-text">Pinceles</span>
+        <svg class="brush-icon" viewBox="0 0 24 24" fill="none" stroke="var(--rojo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          <path d="M5.5 15.5L2 22l6.5-3.5"></path>
+        </svg>
+      </div>
+      <span class="loader-label">Cargando</span>
     </div>
   </div>
 
@@ -128,26 +145,68 @@ let STATE = { miNombre: null, pinceles: [], config: {...DEFAULT_CONFIG}, ventas:
 
 function showLoading(show) { const loader = document.getElementById('loader'); if(loader) loader.style.display = show ? 'flex' : 'none'; }
 
+// Copia profunda simple, usada para poder "revertir" un cambio optimista si el guardado falla.
+function snapshot(obj){ return JSON.parse(JSON.stringify(obj)); }
+
+/* -----------------------------------------------------------------------------
+   api(): llamada BLOQUEANTE con loader de pantalla completa.
+   Se usa solo para las dos cosas que de verdad necesitan esperar la respuesta
+   real del servidor: la carga inicial (SYNC) y el reinicio de misión
+   (RESET_MISSION), porque ahí sí queremos estar seguros de que Google terminó
+   antes de seguir.
+----------------------------------------------------------------------------- */
 async function api(action, payload = {}) {
   showLoading(true);
   try {
     const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action, payload }) });
     const db = await res.json();
     if(db.error) throw new Error(db.error);
-    STATE.pinceles = db.pinceles || [];
-    STATE.ventas = db.ventas || []; STATE.asistencia = db.asistencia || []; STATE.historial = db.historial || [];
-    if(db.config) STATE.config = db.config;
-    STATE.sesiones = db.sesiones || {}; STATE.minimoPagos = db.minimoPagos || {};
-    STATE.postFeriaPagos = db.postFeriaPagos || {}; STATE.deudaAsignada = db.deudaAsignada || {};
-    if(db.ventasMisas) STATE.ventasMisas = db.ventasMisas;
-    if(db.receta && db.receta.length > 0) STATE.receta = db.receta;
-    if(db.docenasCocinar !== undefined) STATE.docenasCocinar = db.docenasCocinar;
-  } catch(e) { if (action !== 'SYNC') toast("Error de conexión. Intentá de nuevo."); }
-  showLoading(false);
+    aplicarDB(db);
+    return db;
+  } catch(e) { if (action !== 'SYNC') toast("Error de conexión. Intentá de nuevo.", true); throw e; }
+  finally { showLoading(false); }
+}
+
+/* -----------------------------------------------------------------------------
+   apiBackground(): dispara el guardado en Google Sheets SIN bloquear la
+   pantalla ni esperar su respuesta para reflejar el cambio (Actualización
+   Optimista). El llamador ya modificó STATE y ya llamó a render() antes de
+   invocar esta función. Si el guardado falla, se ejecuta onError (que debería
+   restaurar el STATE anterior) y se avisa al usuario.
+----------------------------------------------------------------------------- */
+async function apiBackground(action, payload = {}, onError = null) {
+  try {
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action, payload }) });
+    const db = await res.json();
+    if(db.error) throw new Error(db.error);
+    // Si el backend todavía devuelve la planilla entera, la usamos solo para
+    // completar datos que no manejamos localmente (por ej. otro Pincel que
+    // vendió algo mientras tanto). Si en el futuro el Apps Script devuelve
+    // nada más que {ok:true}, este bloque simplemente no hace nada.
+    if(db && typeof db === 'object' && (db.pinceles || db.ventas || db.asistencia)) {
+      aplicarDB(db, {silencioso:true});
+    }
+  } catch(e) {
+    toast("⚠️ No se pudo guardar en Google. Se revirtió el cambio.", true);
+    if(onError) onError();
+    render();
+  }
+}
+
+// Vuelca la respuesta del backend (SYNC completo) en STATE.
+function aplicarDB(db){
+  STATE.pinceles = db.pinceles || STATE.pinceles || [];
+  STATE.ventas = db.ventas || STATE.ventas || []; STATE.asistencia = db.asistencia || STATE.asistencia || []; STATE.historial = db.historial || STATE.historial || [];
+  if(db.config) STATE.config = db.config;
+  STATE.sesiones = db.sesiones || STATE.sesiones || {}; STATE.minimoPagos = db.minimoPagos || STATE.minimoPagos || {};
+  STATE.postFeriaPagos = db.postFeriaPagos || STATE.postFeriaPagos || {}; STATE.deudaAsignada = db.deudaAsignada || STATE.deudaAsignada || {};
+  if(db.ventasMisas) STATE.ventasMisas = db.ventasMisas;
+  if(db.receta && db.receta.length > 0) STATE.receta = db.receta;
+  if(db.docenasCocinar !== undefined) STATE.docenasCocinar = db.docenasCocinar;
 }
 
 const fmt$ = n => "$" + Math.round(n).toLocaleString('es-AR');
-function toast(msg){ const t = document.getElementById('toast'); if(!t) return; t.textContent = msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2000); }
+function toast(msg, warn){ const t = document.getElementById('toast'); if(!t) return; t.textContent = msg; t.classList.toggle('warn', !!warn); t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), warn ? 3200 : 2000); }
 function misVentas(nombre){ return STATE.ventas.filter(v=>v.pincel===nombre); }
 function docenasEquiv(v){ return (Number(v.docenas)||0) + (Number(v.medias)||0)*0.5; }
 function totalDocenasDe(nombre){ return misVentas(nombre).reduce((a,v)=>a+docenasEquiv(v),0); }
@@ -175,7 +234,8 @@ function renderSelector(){
   `;
   document.getElementById('btnEntrar').onclick = async ()=>{
     const v = document.getElementById('selNombre').value.trim(); if(!v){ toast("Escribí o elegí tu nombre"); return; }
-    try { localStorage.setItem('mi_nombre', v); } catch(e){} STATE.miNombre = v; STATE.tab = "estado"; render(); await api('SYNC'); render();
+    try { localStorage.setItem('mi_nombre', v); } catch(e){} STATE.miNombre = v; STATE.tab = "estado"; render();
+    try { await api('SYNC'); } catch(e){} render();
   };
 }
 
@@ -211,33 +271,65 @@ window.openModalVenta = (idEdit = null) => {
   document.querySelectorAll('#tipoRow .toggle-opt').forEach(el=>el.onclick=()=>{ document.querySelectorAll('#tipoRow .toggle-opt').forEach(x=>x.classList.remove('active')); el.classList.add('active'); tipo = el.dataset.v; });
   document.querySelectorAll('#estadoRow .toggle-opt').forEach(el=>el.onclick=()=>{ document.querySelectorAll('#estadoRow .toggle-opt').forEach(x=>x.classList.remove('active')); el.classList.add('active'); estado = el.dataset.v; });
   document.getElementById('closeX').onclick = ()=> root.innerHTML=""; document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') root.innerHTML=""; };
-  document.getElementById('btnGuardarVenta').onclick = async ()=>{
+  document.getElementById('btnGuardarVenta').onclick = ()=>{
     const cliente = document.getElementById('vCliente').value.trim(); if(!cliente){ toast("Escribí el nombre del cliente"); return; } if(doc===0 && med===0){ toast("Cargá al menos una docena o media"); return; }
-    if(reg){ reg.cliente = cliente; reg.docenas = doc; reg.medias = med; reg.tipo = tipo; reg.estado = estado; await api('EDIT_VENTA', reg); } else { await api('ADD_VENTA', { id: Date.now()+"_"+Math.random().toString(36).slice(2,7), fecha: new Date().toISOString(), pincel: STATE.miNombre, cliente, docenas: doc, medias: med, tipo, estado }); }
-    root.innerHTML=""; toast(reg ? "Cambios guardados ✅" : "Venta registrada 🎉"); render();
+    const prevVentas = snapshot(STATE.ventas);
+    if(reg){
+      reg.cliente = cliente; reg.docenas = doc; reg.medias = med; reg.tipo = tipo; reg.estado = estado;
+      root.innerHTML=""; toast("Cambios guardados ✅"); render();
+      apiBackground('EDIT_VENTA', reg, ()=>{ STATE.ventas = prevVentas; });
+    } else {
+      const nueva = { id: Date.now()+"_"+Math.random().toString(36).slice(2,7), fecha: new Date().toISOString(), pincel: STATE.miNombre, cliente, docenas: doc, medias: med, tipo, estado };
+      STATE.ventas.push(nueva);
+      root.innerHTML=""; toast("Venta registrada 🎉"); render();
+      apiBackground('ADD_VENTA', nueva, ()=>{ STATE.ventas = prevVentas; });
+    }
   };
-  const btnBorrar = document.getElementById('btnBorrarVenta'); if(btnBorrar){ btnBorrar.onclick = async ()=>{ if(confirm("¿Seguro que querés borrar esta venta?")){ await api('DEL_VENTA', { id: idEdit }); root.innerHTML=""; toast("Venta eliminada"); render(); } }; }
+  const btnBorrar = document.getElementById('btnBorrarVenta'); if(btnBorrar){ btnBorrar.onclick = ()=>{ if(confirm("¿Seguro que querés borrar esta venta?")){ const prevVentas = snapshot(STATE.ventas); STATE.ventas = STATE.ventas.filter(v=>v.id!==idEdit); root.innerHTML=""; toast("Venta eliminada"); render(); apiBackground('DEL_VENTA', { id: idEdit }, ()=>{ STATE.ventas = prevVentas; }); } }; }
 }
 
 function openModalRegistrarPago(){
   const root = document.getElementById('modalRoot'), pendientes = misVentas(STATE.miNombre).filter(v=>v.estado==="Falta Pagar");
   root.innerHTML = `<div class="overlay" id="ov"><div class="sheet"><span class="close-x" id="closeX">✕</span><h3>Registrar pagos</h3><p class="muted" style="font-size:11px; margin-top:-6px; line-height:1.3;">Tildá únicamente las ventas por las cuales <b>ya le transferiste</b> el dinero a Economía.</p>${pendientes.length===0 ? `<div class="empty">No tenés transferencias pendientes a Economía.</div>` : `${pendientes.map(v=>`<label style="display:flex; align-items:center; gap:10px; text-transform:none; font-weight:600; opacity:1; margin:10px 0;"><input type="checkbox" class="chkPago" data-id="${v.id}" style="width:auto; margin:0;">${v.cliente} — ${v.docenas? v.docenas+' doc ':''}${v.medias? v.medias+' 1/2 doc':''}</label>`).join("")}<button class="btn btn-primary" id="btnConfirmarPagos" style="margin-top:10px;">Confirmar pagos</button>`}</div></div>`;
   document.getElementById('closeX').onclick = ()=> root.innerHTML=""; document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') root.innerHTML=""; };
-  const btn = document.getElementById('btnConfirmarPagos'); if(btn) btn.onclick = async ()=>{ const ids = Array.from(document.querySelectorAll('.chkPago:checked')).map(c=>c.dataset.id); if(ids.length===0){ toast("Seleccioná al menos un pago"); return; } await api('UPDATE_PAGOS_VENTA', ids); root.innerHTML=""; toast("Pagos actualizados ✅"); render(); };
+  const btn = document.getElementById('btnConfirmarPagos'); if(btn) btn.onclick = ()=>{
+    const ids = Array.from(document.querySelectorAll('.chkPago:checked')).map(c=>c.dataset.id); if(ids.length===0){ toast("Seleccioná al menos un pago"); return; }
+    const prevVentas = snapshot(STATE.ventas);
+    ids.forEach(id=>{ const v = STATE.ventas.find(x=>x.id===id); if(v) v.estado = 'Pagado'; });
+    root.innerHTML=""; toast("Pagos actualizados ✅"); render();
+    apiBackground('UPDATE_PAGOS_VENTA', ids, ()=>{ STATE.ventas = prevVentas; });
+  };
 }
 
 function renderTabAsistencia(main){
   const activa = STATE.sesiones[STATE.miNombre], misRegistros = STATE.asistencia.filter(a=>a.pincel===STATE.miNombre).slice().reverse();
   main.innerHTML = `<h2 class="section-title">Mi asistencia</h2><div style="display:flex; gap:12px; margin-bottom:20px;">${activa ? `<div style="flex:1; text-align:center;"><p class="muted" style="margin-bottom:8px;">Entraste a las ${new Date(activa).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</p><button class="btn btn-primary" id="btnSalida" style="flex-direction:column; padding:20px; border-radius:24px; font-size:18px;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:8px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Marcar Salida</button></div>` : `<button class="btn btn-gold" id="btnEntrada" style="flex:1; flex-direction:column; padding:24px 10px; border-radius:24px; font-size:18px;"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:8px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Marcar Entrada</button>`}</div><h2 class="section-title">Mis registros</h2><p class="muted" style="font-size:11px; margin:-5px 0 10px 4px;">Tocá el lápiz si te olvidaste de marcar o querés corregir la hora.</p><div class="card">${misRegistros.length===0 ? `<div class="empty">Todavía no tenés horas cargadas.</div>` : misRegistros.map(r=>`<div class="list-item" style="cursor:pointer;" onclick="openEditAsistencia('${r.id}')"><div><div class="li-name">${new Date(r.fecha).toLocaleDateString('es-AR',{weekday:'long', day:'numeric', month:'short'})}</div><div class="li-sub">${new Date(r.entrada).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})} → ${new Date(r.salida).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</div></div><div style="display:flex; align-items:center; gap:8px;"><span class="badge badge-neutral">${Number(r.horas).toFixed(1)} hs</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tinta)" stroke-width="2" opacity="0.4"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></div></div>`).join("")}</div>`;
-  const be = document.getElementById('btnEntrada'); if(be) be.onclick = async ()=>{ STATE.sesiones[STATE.miNombre] = new Date().toISOString(); await api('SET_SYS', { key: 'sesiones', value: STATE.sesiones }); toast("¡Entrada registrada! ⏱️"); render(); };
-  const bs = document.getElementById('btnSalida'); if(bs) bs.onclick = async ()=>{ const entrada = STATE.sesiones[STATE.miNombre], salida = new Date().toISOString(), horas = Math.max(0, Math.round(((new Date(salida) - new Date(entrada)) / 3600000)*10)/10), asistenciaObj = { id: Date.now()+"_"+Math.random().toString(36).slice(2,7), pincel: STATE.miNombre, fecha: entrada, entrada, salida, horas }; await api('CHECK_OUT', { pincel: STATE.miNombre, asistencia: asistenciaObj }); toast("¡Salida registrada! 🙌"); render(); };
+  const be = document.getElementById('btnEntrada'); if(be) be.onclick = ()=>{
+    const prevSesiones = snapshot(STATE.sesiones);
+    STATE.sesiones[STATE.miNombre] = new Date().toISOString();
+    toast("¡Entrada registrada! ⏱️"); render();
+    apiBackground('SET_SYS', { key: 'sesiones', value: STATE.sesiones }, ()=>{ STATE.sesiones = prevSesiones; });
+  };
+  const bs = document.getElementById('btnSalida'); if(bs) bs.onclick = ()=>{
+    const entrada = STATE.sesiones[STATE.miNombre], salida = new Date().toISOString(), horas = Math.max(0, Math.round(((new Date(salida) - new Date(entrada)) / 3600000)*10)/10), asistenciaObj = { id: Date.now()+"_"+Math.random().toString(36).slice(2,7), pincel: STATE.miNombre, fecha: entrada, entrada, salida, horas };
+    const prevSesiones = snapshot(STATE.sesiones), prevAsistencia = snapshot(STATE.asistencia);
+    delete STATE.sesiones[STATE.miNombre]; STATE.asistencia.push(asistenciaObj);
+    toast("¡Salida registrada! 🙌"); render();
+    apiBackground('CHECK_OUT', { pincel: STATE.miNombre, asistencia: asistenciaObj }, ()=>{ STATE.sesiones = prevSesiones; STATE.asistencia = prevAsistencia; });
+  };
 }
 
 window.openEditAsistencia = (id) => {
   const root = document.getElementById('modalRoot'); const reg = STATE.asistencia.find(a=>a.id === id); if(!reg) return;
   root.innerHTML = `<div class="overlay" id="ov"><div class="sheet"><span class="close-x" id="closeX">✕</span><h3>Editar Horario</h3><label>Hora de llegada</label><input type="datetime-local" id="editEntrada" value="${localISOTime(reg.entrada)}"><label>Hora de salida</label><input type="datetime-local" id="editSalida" value="${localISOTime(reg.salida)}"><button class="btn btn-primary" id="btnGuardarEdit">Guardar cambios</button></div></div>`;
   document.getElementById('closeX').onclick = ()=> root.innerHTML=""; document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') root.innerHTML=""; };
-  document.getElementById('btnGuardarEdit').onclick = async ()=>{ const valIn = document.getElementById('editEntrada').value, valOut = document.getElementById('editSalida').value; if(!valIn || !valOut){ toast("Completá ambas fechas"); return; } const dIn = new Date(valIn), dOut = new Date(valOut), horas = (dOut - dIn) / 3600000; if(horas < 0){ toast("La salida no puede ser anterior"); return; } reg.entrada = dIn.toISOString(); reg.salida = dOut.toISOString(); reg.fecha = dIn.toISOString(); reg.horas = Math.max(0, Math.round(horas*10)/10); await api('EDIT_ASISTENCIA', reg); root.innerHTML=""; toast("Registro actualizado ✅"); render(); };
+  document.getElementById('btnGuardarEdit').onclick = ()=>{
+    const valIn = document.getElementById('editEntrada').value, valOut = document.getElementById('editSalida').value; if(!valIn || !valOut){ toast("Completá ambas fechas"); return; } const dIn = new Date(valIn), dOut = new Date(valOut), horas = (dOut - dIn) / 3600000; if(horas < 0){ toast("La salida no puede ser anterior"); return; }
+    const prevAsistencia = snapshot(STATE.asistencia);
+    reg.entrada = dIn.toISOString(); reg.salida = dOut.toISOString(); reg.fecha = dIn.toISOString(); reg.horas = Math.max(0, Math.round(horas*10)/10);
+    root.innerHTML=""; toast("Registro actualizado ✅"); render();
+    apiBackground('EDIT_ASISTENCIA', reg, ()=>{ STATE.asistencia = prevAsistencia; });
+  };
 }
 
 function renderTabMinimo(main){
@@ -247,8 +339,18 @@ function renderTabMinimo(main){
     <div class="banner-min"><div style="font-size:13px; font-weight:700; opacity:.8; text-transform:uppercase;">Mínimo base de misión</div><div class="stat-num" style="color:var(--tinta); font-size:36px; margin:4px 0;">${fmt$(STATE.config.pagoMinimo)}</div>${min && min.pagado ? `<div style="margin-top:12px;"><span class="badge badge-ok" style="font-size:12px;">Ya registraste el pago del mínimo ✅</span></div>` : `<button class="btn btn-outline btn-sm" id="btnPagueMinimo" style="margin-top:8px; border-color:var(--tinta); color:var(--tinta); font-weight:800;">Avisar que ya pagué el mínimo</button>`}</div>
     ${deuda > 0 ? `<div class="banner-min" style="background:var(--rojo); color:var(--blanco); margin-top:20px;"><div style="font-size:13px; font-weight:700; opacity:.9; text-transform:uppercase;">Deuda post feria</div><div class="stat-num" style="font-size:36px; margin:4px 0;">${fmt$(deuda)}</div>${postFeria && postFeria.pagado ? `<div style="margin-top:12px;"><span class="badge badge-ok" style="font-size:12px; background:var(--blanco); color:var(--rojo);">Ya registraste el pago del saldo post feria ✅</span></div>` : `<button class="btn btn-outline btn-sm" id="btnPaguePostFeria" style="margin-top:8px; border-color:var(--blanco); color:var(--blanco); font-weight:800;">Avisar que ya pagué el saldo post feria</button>`}</div>` : ''}
   `;
-  const bMin = document.getElementById('btnPagueMinimo'); if(bMin) bMin.onclick = async ()=>{ STATE.minimoPagos[STATE.miNombre] = {pagado:true, fecha:new Date().toISOString()}; await api('SET_SYS', { key: 'minimo_pagos', value: STATE.minimoPagos }); toast("¡Gracias! Pago registrado 🙏"); render(); };
-  const bPost = document.getElementById('btnPaguePostFeria'); if(bPost) bPost.onclick = async ()=>{ STATE.postFeriaPagos[STATE.miNombre] = {pagado:true, fecha:new Date().toISOString()}; await api('SET_SYS', { key: 'postferia_pagos', value: STATE.postFeriaPagos }); toast("¡Gracias! Pago registrado 🙏"); render(); };
+  const bMin = document.getElementById('btnPagueMinimo'); if(bMin) bMin.onclick = ()=>{
+    const prev = STATE.minimoPagos[STATE.miNombre];
+    STATE.minimoPagos[STATE.miNombre] = {pagado:true, fecha:new Date().toISOString()};
+    toast("¡Gracias! Pago registrado 🙏"); render();
+    apiBackground('SET_SYS', { key: 'minimo_pagos', value: STATE.minimoPagos }, ()=>{ STATE.minimoPagos[STATE.miNombre] = prev; });
+  };
+  const bPost = document.getElementById('btnPaguePostFeria'); if(bPost) bPost.onclick = ()=>{
+    const prev = STATE.postFeriaPagos[STATE.miNombre];
+    STATE.postFeriaPagos[STATE.miNombre] = {pagado:true, fecha:new Date().toISOString()};
+    toast("¡Gracias! Pago registrado 🙏"); render();
+    apiBackground('SET_SYS', { key: 'postferia_pagos', value: STATE.postFeriaPagos }, ()=>{ STATE.postFeriaPagos[STATE.miNombre] = prev; });
+  };
 }
 
 /* ============================= ECONOMY ============================= */
@@ -280,27 +382,50 @@ function renderEconomia(){
 function renderEcoConfig(main){
   const c = STATE.config;
   main.innerHTML = `<h2 class="section-title">Parámetros de la misión</h2><div class="card"><label>Mínimo de misión ($)</label><input type="number" id="cMinimo" value="${c.pagoMinimo}"><label>Horas para pagar la misión</label><input type="number" id="cHorasObj" value="${c.horasObjetivo}"><label>Valor 1 hora ($)</label><input type="number" id="cHora" value="${c.valorHora}"><label>Precio 1 docena ($)</label><input type="number" id="cDocena" value="${c.valorDocena}"><label>Precio 1/2 docena ($)</label><input type="number" id="cMedia" value="${c.valorMediaDocena}"><label>Porcentaje Solidario (%)</label><input type="number" id="cPorc" value="${c.porcentajeSolidario}"><label>PIN del panel EconomyTeam</label><input type="text" id="cPin" value="${c.pin}" maxlength="4"><button class="btn btn-primary" id="btnGuardarConfig">Guardar cambios</button></div>`;
-  document.getElementById('btnGuardarConfig').onclick = async ()=>{ STATE.config.pagoMinimo = Number(document.getElementById('cMinimo').value)||0; STATE.config.horasObjetivo = Number(document.getElementById('cHorasObj').value)||0; STATE.config.valorHora = Number(document.getElementById('cHora').value)||0; STATE.config.valorDocena = Number(document.getElementById('cDocena').value)||0; STATE.config.valorMediaDocena = Number(document.getElementById('cMedia').value)||0; STATE.config.porcentajeSolidario = Number(document.getElementById('cPorc').value)||40; STATE.config.pin = document.getElementById('cPin').value.trim() || "2026"; await api('SET_SYS', { key: 'config', value: STATE.config }); toast("Configuración guardada ✅"); render(); };
+  document.getElementById('btnGuardarConfig').onclick = ()=>{
+    const prevConfig = snapshot(STATE.config);
+    STATE.config.pagoMinimo = Number(document.getElementById('cMinimo').value)||0; STATE.config.horasObjetivo = Number(document.getElementById('cHorasObj').value)||0; STATE.config.valorHora = Number(document.getElementById('cHora').value)||0; STATE.config.valorDocena = Number(document.getElementById('cDocena').value)||0; STATE.config.valorMediaDocena = Number(document.getElementById('cMedia').value)||0; STATE.config.porcentajeSolidario = Number(document.getElementById('cPorc').value)||40; STATE.config.pin = document.getElementById('cPin').value.trim() || "2026";
+    toast("Configuración guardada ✅"); render();
+    apiBackground('SET_SYS', { key: 'config', value: STATE.config }, ()=>{ STATE.config = prevConfig; });
+  };
 }
 
 function renderEcoCompras(main){
   const docCoc = STATE.docenasCocinar, rows = STATE.receta.map((r,i)=>({...r, idx:i, totalComprar: r.c50 ? Math.max(0, Math.round(((r.c50/50)*docCoc - (r.stock||0))*100)/100) : null})), totalGasto = rows.reduce((a,r)=>a+(Number(r.gasto)||0),0);
   main.innerHTML = `<h2 class="section-title">Calculadora de compras</h2><div class="card"><label>Docenas a cocinar esta feria</label><input type="number" id="cocDoc" value="${docCoc}"><button class="btn btn-gold btn-sm" id="btnRecalc" style="width:100%">Recalcular cantidades</button></div><div class="card"><table class="mini"><thead><tr><th>Ingrediente</th><th>Stock</th><th>Comprar</th><th>Gasto $</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.ing}</td><td><input type="number" class="stockInput" data-i="${r.idx}" value="${r.stock||0}" style="width:58px;"></td><td style="font-weight:800; color:var(--rojo); text-align:center;">${r.totalComprar===null?'—':r.totalComprar}</td><td><input type="number" class="gastoInput" data-i="${r.idx}" value="${r.gasto||0}" style="width:68px;"></td></tr>`).join("")}</tbody></table><div style="height:1px; background:#EEE1C4; margin:14px 0;"></div><div class="row-between"><strong>Gasto total feria</strong><strong style="color:var(--rojo); font-size:18px;">${fmt$(totalGasto)}</strong></div><button class="btn btn-primary" id="btnGuardarCompras" style="margin-top:14px;">Guardar cambios en tabla</button></div>`;
-  document.getElementById('btnRecalc').onclick = async ()=>{ STATE.docenasCocinar = Number(document.getElementById('cocDoc').value)||0; await api('SET_SYS', { key: 'docenas_cocinar', value: STATE.docenasCocinar }); render(); };
-  document.getElementById('btnGuardarCompras').onclick = async ()=>{ document.querySelectorAll('.stockInput').forEach(inp=> STATE.receta[Number(inp.dataset.i)].stock = Number(inp.value)||0); document.querySelectorAll('.gastoInput').forEach(inp=> STATE.receta[Number(inp.dataset.i)].gasto = Number(inp.value)||0); await api('SET_SYS', { key: 'receta', value: STATE.receta }); toast("Tabla guardada ✅"); render(); };
+  document.getElementById('btnRecalc').onclick = ()=>{
+    const prevDoc = STATE.docenasCocinar;
+    STATE.docenasCocinar = Number(document.getElementById('cocDoc').value)||0;
+    render();
+    apiBackground('SET_SYS', { key: 'docenas_cocinar', value: STATE.docenasCocinar }, ()=>{ STATE.docenasCocinar = prevDoc; });
+  };
+  document.getElementById('btnGuardarCompras').onclick = ()=>{
+    const prevReceta = snapshot(STATE.receta);
+    document.querySelectorAll('.stockInput').forEach(inp=> STATE.receta[Number(inp.dataset.i)].stock = Number(inp.value)||0);
+    document.querySelectorAll('.gastoInput').forEach(inp=> STATE.receta[Number(inp.dataset.i)].gasto = Number(inp.value)||0);
+    toast("Tabla guardada ✅"); render();
+    apiBackground('SET_SYS', { key: 'receta', value: STATE.receta }, ()=>{ STATE.receta = prevReceta; });
+  };
 }
 
 function renderEcoVentas(main){
   const totCrudasDoc = STATE.ventas.filter(v=>v.tipo==='Crudas').reduce((a,v)=>a+(Number(v.docenas)||0),0), totCrudasMed = STATE.ventas.filter(v=>v.tipo==='Crudas').reduce((a,v)=>a+(Number(v.medias)||0),0), totCocidasDoc = STATE.ventas.filter(v=>v.tipo==='Cocidas').reduce((a,v)=>a+(Number(v.docenas)||0),0), totCocidasMed = STATE.ventas.filter(v=>v.tipo==='Cocidas').reduce((a,v)=>a+(Number(v.medias)||0),0);
   main.innerHTML = `<h2 class="section-title">Ventas en Misas</h2><div class="card" style="border-left: 4px solid var(--oliva);"><label>Docenas vendidas</label><input type="number" id="misasDocenas" value="${STATE.ventasMisas.docenas || 0}"><label>Medias docenas vendidas</label><input type="number" id="misasMedias" value="${STATE.ventasMisas.medias || 0}"><label>Donaciones recibidas ($)</label><input type="number" id="misasDonaciones" value="${STATE.ventasMisas.donaciones || 0}"><button class="btn btn-primary" id="btnGuardarMisas" style="margin-top:8px;">Guardar datos de misas</button></div><h2 class="section-title">Ventas totales (Pinceles)</h2><div class="stat-grid"><div class="stat-box"><div class="stat-num">${totCrudasDoc}<span style="font-size:18px;">+${totCrudasMed}½</span></div><div class="stat-label">Crudas</div></div><div class="stat-box gold"><div class="stat-num">${totCocidasDoc}<span style="font-size:18px;">+${totCocidasMed}½</span></div><div class="stat-label">Cocidas</div></div></div><h2 class="section-title">Detalle por Pincel</h2><div class="card">${[...new Set(STATE.ventas.map(v=>v.pincel))].length===0 ? `<div class="empty">Todavía no hay ventas cargadas.</div>` : [...new Set(STATE.ventas.map(v=>v.pincel))].map(p=>{ const vs = STATE.ventas.filter(x=>x.pincel===p), impagas = vs.filter(x=>x.estado==='Falta Pagar'); const dImp = impagas.reduce((a,x)=>a+(Number(x.docenas)||0),0), mImp = impagas.reduce((a,x)=>a+(Number(x.medias)||0),0); const plataImpaga = (dImp * (STATE.config.valorDocena||7000)) + (mImp * (STATE.config.valorMediaDocena||3500)); return `<div class="list-item" style="flex-direction:column; align-items:flex-start; gap:6px;"><div class="row-between" style="width:100%;"><div class="li-name">${p}</div><span class="badge badge-neutral">${totalDocenasDe(p)} doc. vendidas</span></div>${plataImpaga > 0 ? `<div style="font-size:11.5px; color:#B4551D; background:#FBE7DA; padding:4px 8px; border-radius:6px; width:100%;">Adeuda transferir: <b>${fmt$(plataImpaga)}</b> (${dImp} doc, ${mImp} meds)</div>` : `<div style="font-size:11.5px; color:var(--oliva); font-weight:700;">Transferencias al día ✅</div>`}</div>` }).join("")}</div>`;
-  document.getElementById('btnGuardarMisas').onclick = async ()=>{ STATE.ventasMisas = { docenas: Number(document.getElementById('misasDocenas').value) || 0, medias: Number(document.getElementById('misasMedias').value) || 0, donaciones: Number(document.getElementById('misasDonaciones').value) || 0 }; await api('SET_SYS', { key: 'ventas_misas', value: STATE.ventasMisas }); toast("Datos guardados ✅"); };
+  document.getElementById('btnGuardarMisas').onclick = ()=>{
+    const prevMisas = snapshot(STATE.ventasMisas);
+    STATE.ventasMisas = { docenas: Number(document.getElementById('misasDocenas').value) || 0, medias: Number(document.getElementById('misasMedias').value) || 0, donaciones: Number(document.getElementById('misasDonaciones').value) || 0 };
+    toast("Datos guardados ✅"); render();
+    apiBackground('SET_SYS', { key: 'ventas_misas', value: STATE.ventasMisas }, ()=>{ STATE.ventasMisas = prevMisas; });
+  };
 }
 
-window.asignarDeuda = async (pincel, monto) => {
+window.asignarDeuda = (pincel, monto) => {
+  const prevDeuda = snapshot(STATE.deudaAsignada), prevPostFeria = snapshot(STATE.postFeriaPagos);
   STATE.deudaAsignada[pincel] = monto;
-  await api('SET_SYS', { key: 'deuda_asignada', value: STATE.deudaAsignada });
-  if(STATE.postFeriaPagos[pincel]){ STATE.postFeriaPagos[pincel].pagado = false; await api('SET_SYS', { key: 'postferia_pagos', value: STATE.postFeriaPagos }); }
+  if(STATE.postFeriaPagos[pincel]){ STATE.postFeriaPagos[pincel].pagado = false; }
   toast(`Deuda asignada a ${pincel} ✅`); render();
+  apiBackground('SET_SYS', { key: 'deuda_asignada', value: STATE.deudaAsignada }, ()=>{ STATE.deudaAsignada = prevDeuda; });
+  if(STATE.postFeriaPagos[pincel]){ apiBackground('SET_SYS', { key: 'postferia_pagos', value: STATE.postFeriaPagos }, ()=>{ STATE.postFeriaPagos = prevPostFeria; }); }
 };
 
 function calcularLiquidacion(nombre){
@@ -354,7 +479,10 @@ window.reiniciarMision = async () => {
     ingresos: ingresosTotales, egresos: egresos, ganancia: ganancia, config: confStr
   };
 
-  await api('RESET_MISSION', summary); toast("Misión archivada y reiniciada 🗂️"); render();
+  // Esta acción es destructiva y poco frecuente: acá sí conviene esperar la
+  // confirmación real del servidor antes de dar por hecho el reinicio.
+  try { await api('RESET_MISSION', summary); toast("Misión archivada y reiniciada 🗂️"); render(); }
+  catch(e) { toast("No se pudo reiniciar la misión, intentá de nuevo.", true); }
 };
 
 function renderEcoResultados(main) {
@@ -395,7 +523,7 @@ function renderEcoResultados(main) {
 (async function init(){
   try { STATE.miNombre = localStorage.getItem('mi_nombre'); } catch(e){}
   try { render(); } catch(e) {}
-  await api('SYNC');
+  try { await api('SYNC'); } catch(e) {}
   try { render(); } catch(e) {}
 })();
 </script>
