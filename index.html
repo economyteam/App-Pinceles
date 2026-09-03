@@ -139,7 +139,7 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwabap5JvbZX2qUOblT_
 /* ============================================================================== */
 
 const DEFAULT_CONFIG = { costoTotal: 120000, pagoMinimo: 18000, horasObjetivo: 17, porcentajeSolidario: 40, valorHora: 7000, valorDocena: 7000, valorMediaDocena: 3500, alias: "gmpinceles2026", pin: "2026" };
-const DEFAULT_RECETA = [ {ing:"Carne - kg", c50:15.3}, {ing:"Cebolla - kg", c50:15.3}, {ing:"Papa - kg", c50:4.5}, {ing:"Verdeo - kg", c50:1.1}, {ing:"Huevo - maple", c50:2.25}, {ing:"Aceituna - kg", c50:2.75}, {ing:"Tapa empanadas - doc", c50:2.08}, {ing:"Pimentón - g", c50:250}, {ing:"Comino - g", c50:80}, {ing:"Pimienta - g", c50:80}, {ing:"Sal - g", c50:450}, {ing:"Cajas docena - u", c50:50}, {ing:"Cajas media - u", c50:25}, {ing:"Films - u", c50:50}, {ing:"Otros gastos / Extras", c50:null} ];
+const DEFAULT_RECETA = [ {ing:"Carne - kg", c50:15.3}, {ing:"Cebolla - kg", c50:15.3}, {ing:"Papa - kg", c50:4.5}, {ing:"Verdeo - kg", c50:1.1}, {ing:"Huevo - maple", c50:2.25}, {ing:"Aceituna - kg", c50:2.75}, {ing:"Tapa empanadas - doc", c50:50}, {ing:"Pimentón - g", c50:250}, {ing:"Comino - g", c50:80}, {ing:"Pimienta - g", c50:80}, {ing:"Sal - g", c50:450}, {ing:"Cajas docena - u", c50:50}, {ing:"Cajas media - u", c50:25}, {ing:"Films - u", c50:50}, {ing:"Otros gastos / Extras", c50:null} ];
 
 let STATE = { miNombre: null, pinceles: [], config: {...DEFAULT_CONFIG}, ventas: [], asistencia: [], historial: [], sesiones: {}, minimoPagos: {}, postFeriaPagos: {}, deudaAsignada: {}, ventasMisas: {docenas: 0, medias: 0, donaciones: 0}, receta: JSON.parse(JSON.stringify(DEFAULT_RECETA)), docenasCocinar: 192, tab: "estado", economiaOn: false, ecoTab: "config" };
 
