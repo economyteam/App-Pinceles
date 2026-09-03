@@ -86,9 +86,8 @@
   .row-between{ display:flex; align-items:center; justify-content:space-between; }
   .muted{ opacity:.6; font-size:12.5px; }
   .banner-min{ background: linear-gradient(135deg, var(--dorado-suave), var(--dorado)); border-radius:18px; padding:16px; margin-bottom:12px; text-align:center; }
-  #loader{ background:rgba(43,24,16,.2); z-index:9999; }
-  .spinner{ width:28px; height:28px; border:4px solid var(--crema-2); border-top-color:var(--rojo); border-radius:50%; animation:spin 1s linear infinite; }
   @keyframes spin{ to{transform:rotate(360deg);} }
+  @keyframes pintar { 0% { transform: rotate(-15deg) translateX(-2px); } 100% { transform: rotate(15deg) translateX(2px); } }
 </style>
 </head>
 <body>
@@ -104,7 +103,17 @@
   <div class="bottomnav" id="bottomNav"></div>
   <div id="modalRoot"></div>
   <div class="toast" id="toast"></div>
-  <div id="loader" class="hidden absolute inset-0 flex items-center justify-center"><div style="background:var(--blanco); padding:16px 24px; border-radius:20px; box-shadow:var(--sombra); display:flex; align-items:center; gap:12px;"><div class="spinner"></div><span style="font-weight:800; color:var(--rojo);">Sincronizando...</span></div></div>
+  
+  <div id="loader" style="position:fixed; inset:0; z-index:9999; background:rgba(43,24,16,.3); display:none; align-items:center; justify-content:center;">
+    <div style="background:var(--blanco); padding:20px 30px; border-radius:24px; box-shadow:var(--sombra); display:flex; flex-direction:column; align-items:center; gap:12px;">
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--rojo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: pintar 0.6s ease-in-out infinite alternate; transform-origin: bottom left;">
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        <path d="M5.5 15.5L2 22l6.5-3.5"></path>
+      </svg>
+      <span style="font-weight:800; color:var(--tinta); font-size:14px; letter-spacing:0.03em;">Pintando datos...</span>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -290,6 +299,7 @@ function renderEcoVentas(main){
 window.asignarDeuda = async (pincel, monto) => {
   STATE.deudaAsignada[pincel] = monto;
   await api('SET_SYS', { key: 'deuda_asignada', value: STATE.deudaAsignada });
+  if(STATE.postFeriaPagos[pincel]){ STATE.postFeriaPagos[pincel].pagado = false; await api('SET_SYS', { key: 'postferia_pagos', value: STATE.postFeriaPagos }); }
   toast(`Deuda asignada a ${pincel} ✅`); render();
 };
 
