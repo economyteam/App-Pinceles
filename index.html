@@ -290,7 +290,6 @@ function renderEcoVentas(main){
 window.asignarDeuda = async (pincel, monto) => {
   STATE.deudaAsignada[pincel] = monto;
   await api('SET_SYS', { key: 'deuda_asignada', value: STATE.deudaAsignada });
-  if(STATE.postFeriaPagos[pincel]){ STATE.postFeriaPagos[pincel].pagado = false; await api('SET_SYS', { key: 'postferia_pagos', value: STATE.postFeriaPagos }); }
   toast(`Deuda asignada a ${pincel} ✅`); render();
 };
 
@@ -302,11 +301,20 @@ function calcularLiquidacion(nombre){
 }
 
 function renderEcoLiquidacion(main){
-  const nombresConDatos = [...new Set([...STATE.pinceles, ...STATE.ventas.map(v=>v.pincel), ...STATE.asistencia.map(a=>a.pincel), ...Object.keys(STATE.minimoPagos)])].sort();
+  const todos = [...new Set([...STATE.pinceles, ...STATE.ventas.map(v=>v.pincel), ...STATE.asistencia.map(a=>a.pincel), ...Object.keys(STATE.minimoPagos)])].sort();
+  
+  const activos = todos.filter(n => {
+    const r = calcularLiquidacion(n);
+    const pagomin = STATE.minimoPagos[n] && STATE.minimoPagos[n].pagado;
+    const pagopost = STATE.postFeriaPagos[n] && STATE.postFeriaPagos[n].pagado;
+    const deuda = STATE.deudaAsignada[n] && STATE.deudaAsignada[n] > 0;
+    return r.horas > 0 || r.docenasVendidas > 0 || pagomin || pagopost || deuda;
+  });
+
   main.innerHTML = `
     <h2 class="section-title">Liquidación Post Feria</h2><p class="muted" style="margin:0 0 12px; font-size:11.5px;">Cálculo: (Horas misión - hs - docenas) * ${fmt$(STATE.config.valorHora||7000)} * ${STATE.config.porcentajeSolidario||40}%</p>
     <div class="card">
-      ${nombresConDatos.length===0 ? `<div class="empty">Todavía no hay datos suficientes.</div>` : nombresConDatos.map(n=>{
+      ${activos.length===0 ? `<div class="empty">Nadie registró horas ni ventas todavía.</div>` : activos.map(n=>{
         const r = calcularLiquidacion(n), yaAsignada = STATE.deudaAsignada[n] || 0, postFeriaOk = STATE.postFeriaPagos[n] && STATE.postFeriaPagos[n].pagado;
         return `<div class="list-item" style="flex-direction:column; align-items:flex-start; gap:8px;"><div class="row-between" style="width:100%;"><div><div class="li-name">${n}</div><div class="li-sub">${r.horas.toFixed(1)} hs · ${r.docenasVendidas} doc.</div></div><div style="text-align:right;"><span class="badge ${r.deudaMonto>0?'badge-pend':'badge-ok'}" style="white-space:nowrap; display:block; margin-bottom:4px;">Debe: ${fmt$(r.deudaMonto)}</span>${yaAsignada > 0 ? `<span style="font-size:10px; color:var(--oliva); font-weight:800; display:block; margin-bottom:4px;">Ya asignado: ${fmt$(yaAsignada)}</span>${postFeriaOk ? `<span style="font-size:10px; background:var(--oliva); color:white; padding:2px 6px; border-radius:10px; font-weight:700;">Pagó deuda ✅</span>` : `<span style="font-size:10px; background:#B4551D; color:white; padding:2px 6px; border-radius:10px; font-weight:700;">Aún no pagó</span>`}` : ''}</div></div>${(r.deudaMonto > 0 && !postFeriaOk) ? `<button class="btn btn-outline btn-sm" style="width:100%; padding:6px; font-size:12px;" onclick="asignarDeuda('${n}', ${r.deudaMonto})">${yaAsignada > 0 ? 'Actualizar deuda asignada' : 'Confirmar y asignar deuda a su perfil'}</button>` : ''}</div>`;
       }).join("")}
@@ -328,9 +336,12 @@ window.reiniciarMision = async () => {
   const ingresosMisas = (docMisas * (c.valorDocena||7000)) + (medMisas * (c.valorMediaDocena||3500)), donaciones = Number(STATE.ventasMisas.donaciones)||0;
   const ingresosTotales = ingresosPinceles + ingresosMisas + donaciones, ganancia = ingresosTotales - egresos;
   
+  const confStr = `Mínimo: ${fmt$(c.pagoMinimo)} • Hs Misión: ${c.horasObjetivo} hs • Valor 1hr: ${fmt$(c.valorHora)} • Docena: ${fmt$(c.valorDocena)} • 1/2 Doc: ${fmt$(c.valorMediaDocena)} • Solidario: ${c.porcentajeSolidario}%`;
+
   const summary = {
-    fecha: new Date().toLocaleDateString('es-AR'), docPinceles: docPinceles + (medPinceles*0.5), docMisas: docMisas + (medMisas*0.5),
-    ingresos: ingresosTotales, egresos: egresos, ganancia: ganancia, config: `Mínimo: ${fmt$(c.pagoMinimo)} | Docena: ${fmt$(c.valorDocena)}`
+    fecha: new Date().toLocaleDateString('es-AR'),
+    docPinceles: docPinceles + (medPinceles*0.5), docMisas: docMisas + (medMisas*0.5),
+    ingresos: ingresosTotales, egresos: egresos, ganancia: ganancia, config: confStr
   };
 
   await api('RESET_MISSION', summary); toast("Misión archivada y reiniciada 🗂️"); render();
@@ -363,7 +374,7 @@ function renderEcoResultados(main) {
           <div class="row-between" style="font-size:12px; margin-bottom:4px;"><span class="muted">Egresos Totales:</span><strong>${fmt$(Number(h.egresos))}</strong></div>
           <div class="row-between" style="font-size:12px; margin-bottom:4px;"><span class="muted">Ventas Pinceles:</span><strong>${h.docPinceles} doc.</strong></div>
           <div class="row-between" style="font-size:12px; margin-bottom:8px;"><span class="muted">Ventas Misas:</span><strong>${h.docMisas} doc.</strong></div>
-          <div style="font-size:10.5px; background:var(--crema-2); padding:6px; border-radius:6px; color:var(--tinta); opacity:0.8;">Config: ${h.config}</div>
+          <div style="font-size:11px; background:var(--crema-2); padding:8px; border-radius:8px; color:var(--tinta); opacity:0.9; line-height:1.4;"><strong>Parámetros usados:</strong><br>${h.config}</div>
         </div>
       `).join("")}
     </div>
