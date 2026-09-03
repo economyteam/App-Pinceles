@@ -109,15 +109,13 @@
 
 <script>
 /* ============================= CONFIGURACIÓN API ============================= */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxtEjT0N-b-ElUNVPxW6TRr-U6Zi06pOvj8GfNMRSFPNZ9fUE8zfnc6u0Xg28etxSQc/exec"; 
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwabap5JvbZX2qUOblT_qob_brz8l7BQO-RzWZLqJRF5BCHm3UK55W5igRcG-xF46OS/exec"; 
 /* ============================================================================== */
 
-const PINCELES = ["Belen Barro","Fatima Almonacid","Fatima Garcia","Felipe Nuñez","Gino Pranzoni","Giuliana Perotti","Joaquina Pesco","Juan Ignacio Maggioli","Juliana Gamboa","Lara Maggioli","Lourdes Echenique","Matias Ravenna","Milagros Masloski","Nicolas Lezcano","Paulina Garcia","Pilar Ripani","Roman Ramirez","Sofia Ibañez","Victoria Gil","Victoria Morino","Agustin Vinciguerra","Alberto Esteban","Amalia Platino","Ana Cejas","Jose Bazan","Bianca Biasucci","Denise Arraya","Ileana Pineda","Julieta","Juan Matias Cartaña","Julia Guevara","Lucas Sanjines","Luciana Amable","Luisina Garcia","Lucila Serrano","Magali Sosa","Maira Cicca","Martina Baima","Martina Almonacid","Martina Pratto","Mateo Buosi","Matias Comello","Matias Urbieta","Melin Alvarado","Milagros Gauna","Pablo Rosales","Paulina Tittarelli","Tomas","Camila Incardona","Airton Yañez","Clara Echenique","Matias Grane"];
-
-const DEFAULT_CONFIG = { costoTotal: 120000, pagoMinimo: 18000, horasObjetivo: 17, porcentajeSolidario: 40, valorHora: 7000, valorDocena: 7000, valorMediaDocena: 3500, alias: "gmpinceles2026", pin: "2026", nuevosPinceles: [], pincelesOcultos: [] };
+const DEFAULT_CONFIG = { costoTotal: 120000, pagoMinimo: 18000, horasObjetivo: 17, porcentajeSolidario: 40, valorHora: 7000, valorDocena: 7000, valorMediaDocena: 3500, alias: "gmpinceles2026", pin: "2026" };
 const DEFAULT_RECETA = [ {ing:"Carne - kg", c50:15.3}, {ing:"Cebolla - kg", c50:15.3}, {ing:"Papa - kg", c50:4.5}, {ing:"Verdeo - kg", c50:1.1}, {ing:"Huevo - maple", c50:2.25}, {ing:"Aceituna - kg", c50:2.75}, {ing:"Tapa empanadas - doc", c50:2.08}, {ing:"Pimentón - g", c50:250}, {ing:"Comino - g", c50:80}, {ing:"Pimienta - g", c50:80}, {ing:"Sal - g", c50:450}, {ing:"Cajas docena - u", c50:50}, {ing:"Cajas media - u", c50:25}, {ing:"Films - u", c50:50}, {ing:"Otros gastos / Extras", c50:null} ];
 
-let STATE = { miNombre: null, config: {...DEFAULT_CONFIG}, ventas: [], asistencia: [], historial: [], sesiones: {}, minimoPagos: {}, postFeriaPagos: {}, deudaAsignada: {}, ventasMisas: {docenas: 0, medias: 0, donaciones: 0}, receta: JSON.parse(JSON.stringify(DEFAULT_RECETA)), docenasCocinar: 192, tab: "estado", economiaOn: false, ecoTab: "config" };
+let STATE = { miNombre: null, pinceles: [], config: {...DEFAULT_CONFIG}, ventas: [], asistencia: [], historial: [], sesiones: {}, minimoPagos: {}, postFeriaPagos: {}, deudaAsignada: {}, ventasMisas: {docenas: 0, medias: 0, donaciones: 0}, receta: JSON.parse(JSON.stringify(DEFAULT_RECETA)), docenasCocinar: 192, tab: "estado", economiaOn: false, ecoTab: "config" };
 
 function showLoading(show) { const loader = document.getElementById('loader'); if(loader) loader.style.display = show ? 'flex' : 'none'; }
 
@@ -127,6 +125,7 @@ async function api(action, payload = {}) {
     const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action, payload }) });
     const db = await res.json();
     if(db.error) throw new Error(db.error);
+    STATE.pinceles = db.pinceles || [];
     STATE.ventas = db.ventas || []; STATE.asistencia = db.asistencia || []; STATE.historial = db.historial || [];
     if(db.config) STATE.config = db.config;
     STATE.sesiones = db.sesiones || {}; STATE.minimoPagos = db.minimoPagos || {};
@@ -148,32 +147,6 @@ function localISOTime(isoString){ if(!isoString) return ""; const d = new Date(i
 
 window.cerrarSesion = () => { STATE.miNombre = null; STATE.economiaOn = false; STATE.tab = "estado"; try { localStorage.removeItem('mi_nombre'); } catch(e){} render(); };
 
-window.reiniciarMision = async () => {
-  const confirm1 = confirm("⚠️ ATENCIÓN: Estás por guardar el historial y borrar TODAS las ventas, horas y gastos para iniciar una nueva feria. ¿Estás seguro?");
-  if(!confirm1) return;
-  const confirm2 = prompt("Para mayor seguridad, escribí la palabra BORRAR (en mayúsculas) para confirmar:");
-  if(confirm2 !== "BORRAR") { toast("Reinicio cancelado."); return; }
-  
-  const c = STATE.config, egresos = STATE.receta.reduce((a,r) => a + (Number(r.gasto)||0), 0);
-  let docPinceles = 0, medPinceles = 0;
-  STATE.ventas.forEach(v => { docPinceles += Number(v.docenas)||0; medPinceles += Number(v.medias)||0; });
-  const ingresosPinceles = (docPinceles * (c.valorDocena||7000)) + (medPinceles * (c.valorMediaDocena||3500));
-  const docMisas = Number(STATE.ventasMisas.docenas)||0, medMisas = Number(STATE.ventasMisas.medias)||0;
-  const ingresosMisas = (docMisas * (c.valorDocena||7000)) + (medMisas * (c.valorMediaDocena||3500));
-  const donaciones = Number(STATE.ventasMisas.donaciones)||0;
-  const ingresosTotales = ingresosPinceles + ingresosMisas + donaciones, ganancia = ingresosTotales - egresos;
-  
-  const summary = {
-    fecha: new Date().toLocaleDateString('es-AR'),
-    docPinceles: docPinceles + (medPinceles*0.5), docMisas: docMisas + (medMisas*0.5),
-    ingresos: ingresosTotales, egresos: egresos, ganancia: ganancia,
-    config: `Mínimo: ${fmt$(c.pagoMinimo)} | Docena: ${fmt$(c.valorDocena)}`
-  };
-
-  await api('RESET_MISSION', summary);
-  toast("Misión archivada y reiniciada 🗂️"); render();
-};
-
 function render(){
   try {
     const actions = document.getElementById('headerActions');
@@ -188,10 +161,8 @@ function render(){
 
 function renderSelector(){
   document.getElementById('bottomNav').innerHTML = ""; document.getElementById('topTitle').textContent = "Pinceles"; document.getElementById('topSub').textContent = "La app ignaciana";
-  const ocultos = STATE.config.pincelesOcultos || [];
-  const listaCompleta = [...PINCELES, ...(STATE.config.nuevosPinceles || [])].filter(n => !ocultos.includes(n)).sort();
   document.getElementById('main').innerHTML = `
-    <div class="selector-wrap"><img src="logo.jpg" alt="Logo Pinceles" class="logo-inicio"><h1>¡Hola, Pincel!</h1><p class="tag">Elegí tu nombre para empezar</p><input list="lista-pinceles" id="selNombre" placeholder="Buscá tu nombre..." autocomplete="off"><datalist id="lista-pinceles">${listaCompleta.map(n=>`<option value="${n}">`).join("")}</datalist><button class="btn btn-primary" id="btnEntrar" style="margin-top:6px;">Iniciar Sesión</button></div>
+    <div class="selector-wrap"><img src="logo.jpg" alt="Logo Pinceles" class="logo-inicio"><h1>¡Hola, Pincel!</h1><p class="tag">Elegí tu nombre para empezar</p><input list="lista-pinceles" id="selNombre" placeholder="Buscá tu nombre..." autocomplete="off"><datalist id="lista-pinceles">${STATE.pinceles.map(n=>`<option value="${n}">`).join("")}</datalist><button class="btn btn-primary" id="btnEntrar" style="margin-top:6px;">Iniciar Sesión</button></div>
   `;
   document.getElementById('btnEntrar').onclick = async ()=>{
     const v = document.getElementById('selNombre').value.trim(); if(!v){ toast("Escribí o elegí tu nombre"); return; }
@@ -319,39 +290,8 @@ function renderEcoVentas(main){
 window.asignarDeuda = async (pincel, monto) => {
   STATE.deudaAsignada[pincel] = monto;
   await api('SET_SYS', { key: 'deuda_asignada', value: STATE.deudaAsignada });
+  if(STATE.postFeriaPagos[pincel]){ STATE.postFeriaPagos[pincel].pagado = false; await api('SET_SYS', { key: 'postferia_pagos', value: STATE.postFeriaPagos }); }
   toast(`Deuda asignada a ${pincel} ✅`); render();
-};
-
-window.agregarPincelManual = async () => {
-  const nuevo = prompt("Ingresá el Nombre y Apellido del nuevo Pincel:"); if(!nuevo || nuevo.trim()==="") return;
-  if(!STATE.config.nuevosPinceles) STATE.config.nuevosPinceles = [];
-  if(STATE.config.nuevosPinceles.includes(nuevo.trim()) || PINCELES.includes(nuevo.trim())) { toast("Ese Pincel ya existe."); return; }
-  STATE.config.nuevosPinceles.push(nuevo.trim()); await api('SET_SYS', { key: 'config', value: STATE.config }); toast("Nuevo Pincel agregado ✅"); render();
-};
-
-window.eliminarPincelManual = async () => {
-  const borrar = prompt("Ingresá el Nombre exacto del Pincel que querés ocultar/borrar:");
-  if(!borrar || borrar.trim()==="") return;
-  const nombre = borrar.trim();
-  let modificado = false;
-
-  if(STATE.config.nuevosPinceles && STATE.config.nuevosPinceles.includes(nombre)) {
-    STATE.config.nuevosPinceles = STATE.config.nuevosPinceles.filter(n => n !== nombre);
-    modificado = true;
-  }
-  else if(PINCELES.includes(nombre)) {
-    if(!STATE.config.pincelesOcultos) STATE.config.pincelesOcultos = [];
-    if(!STATE.config.pincelesOcultos.includes(nombre)) {
-      STATE.config.pincelesOcultos.push(nombre);
-      modificado = true;
-    }
-  }
-
-  if(modificado) {
-    await api('SET_SYS', { key: 'config', value: STATE.config });
-    toast(`Pincel "${nombre}" eliminado ✅`);
-    render();
-  } else { toast("No se encontró ese Pincel."); }
 };
 
 function calcularLiquidacion(nombre){
@@ -362,14 +302,9 @@ function calcularLiquidacion(nombre){
 }
 
 function renderEcoLiquidacion(main){
-  const nombresConDatos = [...new Set([...STATE.ventas.map(v=>v.pincel), ...STATE.asistencia.map(a=>a.pincel), ...Object.keys(STATE.minimoPagos)])];
+  const nombresConDatos = [...new Set([...STATE.pinceles, ...STATE.ventas.map(v=>v.pincel), ...STATE.asistencia.map(a=>a.pincel), ...Object.keys(STATE.minimoPagos)])].sort();
   main.innerHTML = `
-    <h2 class="section-title">Gestión de Grupo</h2>
-    <div style="display:flex; gap:8px; margin-bottom:16px;">
-      <button class="btn btn-outline btn-sm" style="flex:1; border-color:var(--dorado); color:var(--tinta);" onclick="agregarPincelManual()">＋ Agregar Pincel</button>
-      <button class="btn btn-outline btn-sm" style="flex:1; border-color:#B4551D; color:#B4551D;" onclick="eliminarPincelManual()">🗑️ Borrar Pincel</button>
-    </div>
-    <h2 class="section-title">Liquidación Post Feria</h2><p class="muted" style="margin:0 0 12px; font-size:11.5px;">Cálculo: (Horas feria - docenas equivalentes) * ${fmt$(STATE.config.valorHora||7000)} * ${STATE.config.porcentajeSolidario||40}%</p>
+    <h2 class="section-title">Liquidación Post Feria</h2><p class="muted" style="margin:0 0 12px; font-size:11.5px;">Cálculo: (Horas misión - hs - docenas) * ${fmt$(STATE.config.valorHora||7000)} * ${STATE.config.porcentajeSolidario||40}%</p>
     <div class="card">
       ${nombresConDatos.length===0 ? `<div class="empty">Todavía no hay datos suficientes.</div>` : nombresConDatos.map(n=>{
         const r = calcularLiquidacion(n), yaAsignada = STATE.deudaAsignada[n] || 0, postFeriaOk = STATE.postFeriaPagos[n] && STATE.postFeriaPagos[n].pagado;
@@ -394,8 +329,7 @@ window.reiniciarMision = async () => {
   const ingresosTotales = ingresosPinceles + ingresosMisas + donaciones, ganancia = ingresosTotales - egresos;
   
   const summary = {
-    fecha: new Date().toLocaleDateString('es-AR'),
-    docPinceles: docPinceles + (medPinceles*0.5), docMisas: docMisas + (medMisas*0.5),
+    fecha: new Date().toLocaleDateString('es-AR'), docPinceles: docPinceles + (medPinceles*0.5), docMisas: docMisas + (medMisas*0.5),
     ingresos: ingresosTotales, egresos: egresos, ganancia: ganancia, config: `Mínimo: ${fmt$(c.pagoMinimo)} | Docena: ${fmt$(c.valorDocena)}`
   };
 
