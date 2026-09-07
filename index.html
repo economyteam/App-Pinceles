@@ -135,14 +135,14 @@
 
 <script>
 /* ============================= CONFIGURACIÓN API ============================= */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwabap5JvbZX2qUOblT_qob_brz8l7BQO-RzWZLqJRF5BCHm3UK55W5igRcG-xF46OS/exec"; 
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxSgkM9_wIc3W6XG-YbzzYfmB1u01O95TbV_imXX2h6qetiS_vZI1dh9IQavVd-HwE5/exec"; 
 /* ============================================================================== */
 
 /* Integrantes de EconomyTeam que pueden recibir plata en efectivo */
 const RECEPTORES = ["Luli Echenique","Mati Comello","Mili Masloski","Pauli García"];
 
 const DEFAULT_CONFIG = { costoTotal: 120000, pagoMinimo: 18000, horasObjetivo: 17, porcentajeSolidario: 40, valorHora: 7000, valorDocena: 7000, valorMediaDocena: 3500, alias: "gmpinceles2026", pin: "2026" };
-const DEFAULT_RECETA = [ {ing:"Carne - kg", c50:15.3}, {ing:"Cebolla - kg", c50:15.3}, {ing:"Papa - kg", c50:4.5}, {ing:"Verdeo - kg", c50:1.1}, {ing:"Huevo - maple", c50:2.25}, {ing:"Aceituna - kg", c50:2.75}, {ing:"Tapa empanadas - cajas", c50:50}, {ing:"Pimentón - g", c50:250}, {ing:"Comino - g", c50:80}, {ing:"Pimienta - g", c50:80}, {ing:"Sal - g", c50:450}, {ing:"Cajas docena - u", c50:50}, {ing:"Cajas media - u", c50:25}, {ing:"Films - u", c50:50}, {ing:"Otros gastos / Extras", c50:null} ];
+const DEFAULT_RECETA = [ {ing:"Carne - kg", c50:15.3}, {ing:"Cebolla - kg", c50:15.3}, {ing:"Papa - kg", c50:4.5}, {ing:"Verdeo - kg", c50:1.1}, {ing:"Huevo - maple", c50:2.25}, {ing:"Aceituna - kg", c50:2.75}, {ing:"Tapa empanadas - doc", c50:50}, {ing:"Pimentón - g", c50:250}, {ing:"Comino - g", c50:80}, {ing:"Pimienta - g", c50:80}, {ing:"Sal - g", c50:450}, {ing:"Cajas docena - u", c50:50}, {ing:"Cajas media - u", c50:25}, {ing:"Films - u", c50:50}, {ing:"Otros gastos / Extras", c50:null} ];
 
 let STATE = { miNombre: null, pinceles: [], config: {...DEFAULT_CONFIG}, ventas: [], asistencia: [], historial: [], sesiones: {}, minimoPagos: {}, postFeriaPagos: {}, deudaAsignada: {}, ventasMisas: {docenas: 0, medias: 0, donaciones: 0}, receta: JSON.parse(JSON.stringify(DEFAULT_RECETA)), docenasCocinar: 192, tab: "estado", economiaOn: false, ecoTab: "ventas" };
 
@@ -153,10 +153,6 @@ function snapshot(obj){ return JSON.parse(JSON.stringify(obj)); }
 
 /* -----------------------------------------------------------------------------
    api(): llamada BLOQUEANTE con loader de pantalla completa.
-   Se usa solo para las dos cosas que de verdad necesitan esperar la respuesta
-   real del servidor: la carga inicial (SYNC) y el reinicio de misión
-   (RESET_MISSION), porque ahí sí queremos estar seguros de que Google terminó
-   antes de seguir.
 ----------------------------------------------------------------------------- */
 async function api(action, payload = {}) {
   showLoading(true);
@@ -173,9 +169,7 @@ async function api(action, payload = {}) {
 /* -----------------------------------------------------------------------------
    apiBackground(): dispara el guardado en Google Sheets SIN bloquear la
    pantalla ni esperar su respuesta para reflejar el cambio (Actualización
-   Optimista). El llamador ya modificó STATE y ya llamó a render() antes de
-   invocar esta función. Si el guardado falla, se ejecuta onError (que debería
-   restaurar el STATE anterior) y se avisa al usuario.
+   Optimista).
 ----------------------------------------------------------------------------- */
 async function apiBackground(action, payload = {}, onError = null) {
   try {
@@ -192,14 +186,27 @@ async function apiBackground(action, payload = {}, onError = null) {
   }
 }
 
-function aplicarDB(db){
+function aplicarDB(db, opciones = {}){
   STATE.pinceles = db.pinceles || STATE.pinceles || [];
-  STATE.ventas = db.ventas || STATE.ventas || []; STATE.asistencia = db.asistencia || STATE.asistencia || []; STATE.historial = db.historial || STATE.historial || [];
+  STATE.ventas = db.ventas || STATE.ventas || []; 
+  STATE.asistencia = db.asistencia || STATE.asistencia || []; 
+  STATE.historial = db.historial || STATE.historial || [];
   if(db.config) STATE.config = db.config;
-  STATE.sesiones = db.sesiones || STATE.sesiones || {}; STATE.minimoPagos = db.minimoPagos || STATE.minimoPagos || {};
-  STATE.postFeriaPagos = db.postFeriaPagos || STATE.postFeriaPagos || {}; STATE.deudaAsignada = db.deudaAsignada || STATE.deudaAsignada || {};
+  STATE.sesiones = db.sesiones || STATE.sesiones || {}; 
+  STATE.minimoPagos = db.minimoPagos || STATE.minimoPagos || {};
+  STATE.postFeriaPagos = db.postFeriaPagos || STATE.postFeriaPagos || {}; 
+  STATE.deudaAsignada = db.deudaAsignada || STATE.deudaAsignada || {};
   if(db.ventasMisas) STATE.ventasMisas = db.ventasMisas;
-  if(db.receta && db.receta.length > 0) STATE.receta = db.receta;
+  
+  if(db.receta && db.receta.length > 0) {
+    // Autocorrección del bug de Tapas de Empanadas. Detecta el error viejo y lo pasa a 50 (docenas).
+    const tapaIndex = db.receta.findIndex(r => r.ing.toLowerCase().includes("tapa empanadas"));
+    if(tapaIndex >= 0 && db.receta[tapaIndex].c50 < 10) {
+      db.receta[tapaIndex].c50 = 50; 
+      db.receta[tapaIndex].ing = "Tapa empanadas - doc"; 
+    }
+    STATE.receta = db.receta;
+  }
   if(db.docenasCocinar !== undefined) STATE.docenasCocinar = db.docenasCocinar;
 }
 
@@ -215,7 +222,6 @@ window.cerrarSesion = () => { STATE.miNombre = null; STATE.economiaOn = false; S
 
 /* =============================================================================
    BLOQUE REUTILIZABLE: forma de pago (Transferencia / Efectivo + "¿A quién?")
-   Se usa en: Registrar venta, Registrar pagos, Mínimo de misión, Deuda post feria.
 ============================================================================= */
 function metodoPagoHTML(idPrefix, metodoInit, quienInit){
   return `
@@ -250,7 +256,6 @@ function wireMetodoPago(idPrefix){
     getQuien: ()=> { const el = document.getElementById(`${idPrefix}_quien`); return el ? el.value : ""; }
   };
 }
-// Modal genérico chico, usado para "Mínimo de misión" y "Deuda post feria".
 function openModalMetodoPago(titulo, onConfirm){
   const root = document.getElementById('modalRoot');
   root.innerHTML = `<div class="overlay" id="ov"><div class="sheet"><span class="close-x" id="closeX">✕</span><h3>${titulo}</h3>${metodoPagoHTML('genpago', null, null)}<button class="btn btn-primary" id="btnConfirmPagoMetodo" style="margin-top:6px;">Confirmar</button></div></div>`;
@@ -445,7 +450,7 @@ function openPinModal(){
       const val = k.dataset.k; if(val==='') return;
       if(val==='⌫'){ entered = entered.slice(0,-1); } else if(entered.length<4){ entered += val; }
       dots().forEach((d,i)=> d.classList.toggle('filled', i<entered.length));
-      if(entered.length===4){ setTimeout(()=>{ if(entered === cfgPin){ STATE.economiaOn = true; STATE.ecoTab="ventas"; root.innerHTML=""; render(); } else { toast("PIN incorrecto"); entered=""; dots().forEach(d=>d.classList.remove('filled')); } }, 150); }
+      if(entered.length===4){ setTimeout(()=>{ if(entered === cfgPin){ STATE.economiaOn = true; STATE.ecoTab="ventas"; root.innerHTML=""; render(); } else { toast("PIN incorrecto", true); entered=""; dots().forEach(d=>d.classList.remove('filled')); } }, 150); }
     };
   });
 }
@@ -496,8 +501,59 @@ function renderEcoCompras(main){
 }
 
 function renderEcoVentas(main){
+  const crudasMap = {}, cocidasMap = {};
+  STATE.ventas.forEach(v => {
+    const d = Number(v.docenas)||0, m = Number(v.medias)||0;
+    if(d===0 && m===0) return;
+    if(v.tipo === 'Crudas') {
+      if(!crudasMap[v.pincel]) crudasMap[v.pincel] = {d:0, m:0};
+      crudasMap[v.pincel].d += d; crudasMap[v.pincel].m += m;
+    } else if(v.tipo === 'Cocidas') {
+      if(!cocidasMap[v.pincel]) cocidasMap[v.pincel] = {d:0, m:0};
+      cocidasMap[v.pincel].d += d; cocidasMap[v.pincel].m += m;
+    }
+  });
+  
+  const arrCrudas = Object.entries(crudasMap).sort((a,b)=>a[0].localeCompare(b[0]));
+  const arrCocidas = Object.entries(cocidasMap).sort((a,b)=>a[0].localeCompare(b[0]));
+  const renderDetalle = (arr) => arr.length===0 ? `<tr><td colspan="3" style="text-align:center; opacity:.5;">No hay ventas</td></tr>` : arr.map(([p, v]) => `<tr><td>${p}</td><td style="text-align:center; font-weight:700;">${v.d}</td><td style="text-align:center; font-weight:700;">${v.m}</td></tr>`).join("");
+
   const totCrudasDoc = STATE.ventas.filter(v=>v.tipo==='Crudas').reduce((a,v)=>a+(Number(v.docenas)||0),0), totCrudasMed = STATE.ventas.filter(v=>v.tipo==='Crudas').reduce((a,v)=>a+(Number(v.medias)||0),0), totCocidasDoc = STATE.ventas.filter(v=>v.tipo==='Cocidas').reduce((a,v)=>a+(Number(v.docenas)||0),0), totCocidasMed = STATE.ventas.filter(v=>v.tipo==='Cocidas').reduce((a,v)=>a+(Number(v.medias)||0),0);
-  main.innerHTML = `<h2 class="section-title">Ventas en Misas</h2><div class="card" style="border-left: 4px solid var(--oliva);"><label>Docenas vendidas</label><input type="number" id="misasDocenas" value="${STATE.ventasMisas.docenas || 0}"><label>Medias docenas vendidas</label><input type="number" id="misasMedias" value="${STATE.ventasMisas.medias || 0}"><label>Donaciones recibidas ($)</label><input type="number" id="misasDonaciones" value="${STATE.ventasMisas.donaciones || 0}"><button class="btn btn-primary" id="btnGuardarMisas" style="margin-top:8px;">Guardar datos de misas</button></div><h2 class="section-title">Ventas totales (Pinceles)</h2><div class="stat-grid"><div class="stat-box"><div class="stat-num">${totCrudasDoc}<span style="font-size:18px;">+${totCrudasMed}½</span></div><div class="stat-label">Crudas</div></div><div class="stat-box gold"><div class="stat-num">${totCocidasDoc}<span style="font-size:18px;">+${totCocidasMed}½</span></div><div class="stat-label">Cocidas</div></div></div><h2 class="section-title">Detalle por Pincel</h2><div class="card">${[...new Set(STATE.ventas.map(v=>v.pincel))].length===0 ? `<div class="empty">Todavía no hay ventas cargadas.</div>` : [...new Set(STATE.ventas.map(v=>v.pincel))].map(p=>{ const vs = STATE.ventas.filter(x=>x.pincel===p), impagas = vs.filter(x=>x.estado==='Falta Pagar'); const dImp = impagas.reduce((a,x)=>a+(Number(x.docenas)||0),0), mImp = impagas.reduce((a,x)=>a+(Number(x.medias)||0),0); const plataImpaga = (dImp * (STATE.config.valorDocena||7000)) + (mImp * (STATE.config.valorMediaDocena||3500)); return `<div class="list-item" style="flex-direction:column; align-items:flex-start; gap:6px;"><div class="row-between" style="width:100%;"><div class="li-name">${p}</div><span class="badge badge-neutral">${totalDocenasDe(p)} doc. vendidas</span></div>${plataImpaga > 0 ? `<div style="font-size:11.5px; color:#B4551D; background:#FBE7DA; padding:4px 8px; border-radius:6px; width:100%;">Adeuda transferir: <b>${fmt$(plataImpaga)}</b> (${dImp} doc, ${mImp} meds)</div>` : `<div style="font-size:11.5px; color:var(--oliva); font-weight:700;">Transferencias al día ✅</div>`}</div>` }).join("")}</div>`;
+  
+  main.innerHTML = `
+    <h2 class="section-title">Ventas en Misas</h2><div class="card" style="border-left: 4px solid var(--oliva);"><label>Docenas vendidas</label><input type="number" id="misasDocenas" value="${STATE.ventasMisas.docenas || 0}"><label>Medias docenas vendidas</label><input type="number" id="misasMedias" value="${STATE.ventasMisas.medias || 0}"><label>Donaciones recibidas ($)</label><input type="number" id="misasDonaciones" value="${STATE.ventasMisas.donaciones || 0}"><button class="btn btn-primary" id="btnGuardarMisas" style="margin-top:8px;">Guardar datos de misas</button></div>
+    
+    <h2 class="section-title">Ventas totales (Pinceles)</h2>
+    <div class="stat-grid">
+      <div class="stat-box" style="cursor:pointer; position:relative;" onclick="const e=document.getElementById('det-crudas'); e.style.display=e.style.display==='none'?'block':'none';">
+        <div class="stat-num">${totCrudasDoc}<span style="font-size:18px;">+${totCrudasMed}½</span></div>
+        <div class="stat-label">Crudas <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-bottom:2px;"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+      </div>
+      <div class="stat-box gold" style="cursor:pointer; position:relative;" onclick="const e=document.getElementById('det-cocidas'); e.style.display=e.style.display==='none'?'block':'none';">
+        <div class="stat-num">${totCocidasDoc}<span style="font-size:18px;">+${totCocidasMed}½</span></div>
+        <div class="stat-label">Cocidas <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle; margin-bottom:2px;"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+      </div>
+    </div>
+
+    <div id="det-crudas" class="card" style="display:none; margin-top:12px; border-left:4px solid var(--rojo); padding:14px;">
+      <h3 style="margin:0 0 10px; font-size:12px; color:var(--rojo); text-transform:uppercase; font-weight:800; letter-spacing:0.04em;">Detalle Crudas</h3>
+      <table class="mini">
+        <thead><tr><th>Pincel</th><th style="text-align:center; width:60px;">Doc.</th><th style="text-align:center; width:60px;">1/2 Doc.</th></tr></thead>
+        <tbody>${renderDetalle(arrCrudas)}</tbody>
+      </table>
+    </div>
+
+    <div id="det-cocidas" class="card" style="display:none; margin-top:12px; border-left:4px solid var(--dorado); padding:14px;">
+      <h3 style="margin:0 0 10px; font-size:12px; color:var(--tinta); text-transform:uppercase; font-weight:800; letter-spacing:0.04em;">Detalle Cocidas</h3>
+      <table class="mini">
+        <thead><tr><th>Pincel</th><th style="text-align:center; width:60px;">Doc.</th><th style="text-align:center; width:60px;">1/2 Doc.</th></tr></thead>
+        <tbody>${renderDetalle(arrCocidas)}</tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title" style="margin-top:20px;">Detalle de pagos por Pincel</h2>
+    <div class="card">${[...new Set(STATE.ventas.map(v=>v.pincel))].length===0 ? `<div class="empty">Todavía no hay ventas cargadas.</div>` : [...new Set(STATE.ventas.map(v=>v.pincel))].map(p=>{ const vs = STATE.ventas.filter(x=>x.pincel===p), impagas = vs.filter(x=>x.estado==='Falta Pagar'); const dImp = impagas.reduce((a,x)=>a+(Number(x.docenas)||0),0), mImp = impagas.reduce((a,x)=>a+(Number(x.medias)||0),0); const plataImpaga = (dImp * (STATE.config.valorDocena||7000)) + (mImp * (STATE.config.valorMediaDocena||3500)); return `<div class="list-item" style="flex-direction:column; align-items:flex-start; gap:6px;"><div class="row-between" style="width:100%;"><div class="li-name">${p}</div><span class="badge badge-neutral">${totalDocenasDe(p)} doc. vendidas</span></div>${plataImpaga > 0 ? `<div style="font-size:11.5px; color:#B4551D; background:#FBE7DA; padding:4px 8px; border-radius:6px; width:100%;">Adeuda transferir: <b>${fmt$(plataImpaga)}</b> (${dImp} doc, ${mImp} meds)</div>` : `<div style="font-size:11.5px; color:var(--oliva); font-weight:700;">Transferencias al día ✅</div>`}</div>` }).join("")}</div>
+  `;
   document.getElementById('btnGuardarMisas').onclick = ()=>{
     const prevMisas = snapshot(STATE.ventasMisas);
     STATE.ventasMisas = { docenas: Number(document.getElementById('misasDocenas').value) || 0, medias: Number(document.getElementById('misasMedias').value) || 0, donaciones: Number(document.getElementById('misasDonaciones').value) || 0 };
@@ -549,10 +605,10 @@ window.reiniciarMision = async () => {
   if(!confirm1) return;
 
   const nombreMision = prompt("Ponele un nombre a esta feria/misión para guardarla en el Historial (ej: 'Feria Julio 2026'):");
-  if(!nombreMision || !nombreMision.trim()){ toast("Reinicio cancelado: hace falta un nombre para archivarla."); return; }
+  if(!nombreMision || !nombreMision.trim()){ toast("Reinicio cancelado: hace falta un nombre para archivarla.", true); return; }
 
   const confirm2 = prompt("Escribí la palabra BORRAR (en mayúsculas) para confirmar:");
-  if(confirm2 !== "BORRAR") { toast("Reinicio cancelado."); return; }
+  if(confirm2 !== "BORRAR") { toast("Reinicio cancelado.", true); return; }
   
   const c = STATE.config, egresos = STATE.receta.reduce((a,r) => a + (Number(r.gasto)||0), 0);
   let docPinceles = 0, medPinceles = 0;
