@@ -135,16 +135,16 @@
 
 <script>
 /* ============================= CONFIGURACIÓN API ============================= */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw0bK6WNTjMnRYlHCSa8x94DERAMgpbNqp1Pqv57hGGiyIERUFO7D87pXV5HwTqvhqT/exec"; 
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxogLtZlqgk6wkzD6AjpM-WFJa19YjMwTI0pzx1bWwDLIIKMVZTWb5zqlUjiiaGazgH/exec"; 
 /* ============================================================================== */
 
 const RECEPTORES = ["Luli Echenique","Mati Comello","Mili Masloski","Pauli García"];
 const DEFAULT_CONFIG = { costoTotal: 120000, pagoMinimo: 18000, horasObjetivo: 17, porcentajeSolidario: 40, valorHora: 7000, valorDocena: 7000, valorMediaDocena: 3500, alias: "gmpinceles2026", pin: "2026" };
 
 const DEFAULT_RECETA = [
-  {cat:"Ingredientes", ing:"Carne - kg", c50:15.3}, {cat:"Ingredientes", ing:"Cebolla - kg", c50:15.3}, {cat:"Ingredientes", ing:"Papa - kg", c50:4.5}, {cat:"Ingredientes", ing:"Verdeo - kg", c50:1.1}, {cat:"Ingredientes", ing:"Huevo - maple", c50:2.25}, {cat:"Ingredientes", ing:"Aceituna - kg", c50:2.75}, {cat:"Ingredientes", ing:"Tapa empanadas - doc", c50:50}, {cat:"Ingredientes", ing:"Pimentón - g", c50:250}, {cat:"Ingredientes", ing:"Comino - g", c50:80}, {cat:"Ingredientes", ing:"Pimienta - g", c50:80}, {cat:"Ingredientes", ing:"Sal - g", c50:450}, {cat:"Ingredientes", ing:"Aceite - L", c50:2},
-  {cat:"Descartables", ing:"Cajas docena - u", c50:50}, {cat:"Descartables", ing:"Cajas media - u", c50:25}, {cat:"Descartables", ing:"Films - u", c50:50}, {cat:"Descartables", ing:"Guantes nitrilo - u", c50:100}, {cat:"Descartables", ing:"Bolsas - u", c50:150}, {cat:"Descartables", ing:"Cofias - u", c50:100},
-  {cat:"Limpieza", ing:"Detergente - L", c50:2}, {cat:"Limpieza", ing:"Desengrasante - L", c50:2}, {cat:"Limpieza", ing:"Esponjas - u", c50:2}, {cat:"Limpieza", ing:"Esponjas metálicas - u", c50:6},
+  {cat:"Ingredientes", ing:"Carne - kg", c50:15.3}, {cat:"Ingredientes", ing:"Cebolla - kg", c50:15.3}, {cat:"Ingredientes", ing:"Papa - kg", c50:4.5}, {cat:"Ingredientes", ing:"Verdeo - kg", c50:1.1}, {cat:"Ingredientes", ing:"Huevo - maple", c50:2.25}, {cat:"Ingredientes", ing:"Aceituna - kg", c50:2.75}, {cat:"Ingredientes", ing:"Tapa empanadas - doc", c50:50}, {cat:"Ingredientes", ing:"Pimentón - g", c50:250}, {cat:"Ingredientes", ing:"Comino - g", c50:80}, {cat:"Ingredientes", ing:"Pimienta - g", c50:80}, {cat:"Ingredientes", ing:"Sal - g", c50:450}, {cat:"Ingredientes", ing:"Aceite - L", fixed:2},
+  {cat:"Descartables", ing:"Cajas docena - u", fixed:150}, {cat:"Descartables", ing:"Cajas media - u", fixed:100}, {cat:"Descartables", ing:"Films - u", c50:50}, {cat:"Descartables", ing:"Guantes nitrilo - u", fixed:100}, {cat:"Descartables", ing:"Bolsas - u", fixed:150}, {cat:"Descartables", ing:"Cofias - u", fixed:100},
+  {cat:"Limpieza", ing:"Detergente - L", fixed:2}, {cat:"Limpieza", ing:"Desengrasante - L", fixed:2}, {cat:"Limpieza", ing:"Esponjas - u", fixed:2}, {cat:"Limpieza", ing:"Esponjas metálicas - u", fixed:6},
   {cat:"Otros", ing:"Otros gastos / Extras", c50:null}
 ];
 
@@ -195,7 +195,11 @@ function aplicarDB(db, opciones = {}){
   if(db.receta && db.receta.length > 0) {
     db.receta.forEach(r => {
       const def = DEFAULT_RECETA.find(d => d.ing.split(' - ')[0] === r.ing.split(' - ')[0]);
-      if(def) r.cat = def.cat; else if(!r.cat) r.cat = "Otros";
+      if(def) {
+        r.cat = def.cat;
+        if(def.fixed !== undefined) { r.fixed = def.fixed; delete r.c50; }
+        else if(def.c50 !== undefined) { r.c50 = def.c50; delete r.fixed; }
+      } else if(!r.cat) { r.cat = "Otros"; }
     });
     const currentNames = db.receta.map(r => r.ing.split(' - ')[0]);
     DEFAULT_RECETA.forEach(def => {
@@ -472,7 +476,15 @@ function renderEcoConfig(main){
 }
 
 function renderEcoCompras(main){
-  const docCoc = STATE.docenasCocinar, rows = STATE.receta.map((r,i)=>({...r, idx:i, totalComprar: r.c50 ? Math.max(0, Math.round(((r.c50/50)*docCoc - (r.stock||0))*100)/100) : null})), totalGasto = rows.reduce((a,r)=>a+(Number(r.gasto)||0),0);
+  const docCoc = STATE.docenasCocinar;
+  const rows = STATE.receta.map((r,i) => {
+    let req = null;
+    if(r.fixed !== undefined) req = r.fixed;
+    else if(r.c50 !== undefined && r.c50 !== null) req = (r.c50/50)*docCoc;
+    let totalComprar = req !== null ? Math.max(0, Math.round((req - (r.stock||0))*100)/100) : null;
+    return {...r, idx:i, totalComprar};
+  });
+  const totalGasto = rows.reduce((a,r)=>a+(Number(r.gasto)||0),0);
   
   const groups = { "Ingredientes": [], "Descartables": [], "Limpieza": [], "Otros": [] };
   rows.forEach(r => { let cat = r.cat || "Otros"; if(!groups[cat]) groups[cat] = []; groups[cat].push(r); });
