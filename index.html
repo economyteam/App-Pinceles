@@ -236,10 +236,10 @@ function metodoPagoHTML(idPrefix, metodoInit, quienInit){
         <div class="toggle-opt ${metodoInit==='Efectivo'?'active':''}" data-v="Efectivo">Efectivo</div>
       </div>
       <div id="${idPrefix}_quien_wrap" style="${metodoInit==='Efectivo'?'':'display:none;'}">
-        <label>¿A quién?</label>
+        <label>¿A quién se lo diste?</label>
         <select id="${idPrefix}_quien">
-          <option value="" ${!quienInit?'selected':''} disabled>Elegí a quién</option>
-          ${RECEPTORES.map(r=>`<option value="${r}" ${quienInit===r?'selected':''}>${r}</option>`).join('')}
+          <option value="" ${!quienInit?'selected':''} disabled>Elegí a quién se lo diste</option>
+          ${RECEPTORES.map(r=>`<option value="${r}" ${quienInit===r?'selected':''}>$f{r}</option>`).join('')}
         </select>
       </div>
     </div>
@@ -335,7 +335,7 @@ window.openModalVenta = (idEdit = null) => {
   
   root.innerHTML = `<div class="overlay" id="ov"><div class="sheet"><span class="close-x" id="closeX">✕</span><h3>${reg ? 'Editar Venta' : 'Registrar Venta'}</h3>
     <label>Nombre o apodo del cliente</label>
-    <input id="vCliente" value="${cName}" placeholder="Ej: Marta (vecina)">
+    <input id="vCliente" value="${cName}" placeholder="Ej: Jesús (amigo)">
     
     <div style="background:var(--blanco); border:1.5px solid #E7DCC3; border-radius:16px; padding:12px 14px 4px; margin-bottom:16px;">
       <label style="color:var(--rojo); font-size:14px; margin-bottom:12px; text-transform:none; opacity:1;">🥟 Crudas</label>
@@ -361,10 +361,10 @@ window.openModalVenta = (idEdit = null) => {
       </div>
     </div>
 
-    <label>¿Ya transferiste el dinero a Economía?</label>
+    <label>¿Ya le pagaste a Economía?</label>
     <div class="toggle-row" id="estadoRow"><div class="toggle-opt ${estado==='Falta Pagar'?'active':''}" data-v="Falta Pagar">Falta pagar</div><div class="toggle-opt ${estado==='Pagado'?'active':''}" data-v="Pagado">Pagado</div></div>
     <div id="pagoExtra"></div>
-    <p class="muted" style="font-size:11px; margin-top:-6px; margin-bottom:12px; line-height:1.3;">"Pagado" significa que vos ya le mandaste esa plata a Economía. No importa si tu cliente todavía no te pagó a vos.</p>
+    <p class="muted" style="font-size:11px; margin-top:-6px; margin-bottom:12px; line-height:1.3;">"Pagado" significa que vos ya le mandaste esa plata a Economía.</p>
     <button class="btn btn-primary" id="btnGuardarVenta" style="margin-bottom:8px;">${reg ? 'Guardar Cambios' : 'Guardar Venta'}</button>
     ${reg ? `<button class="btn btn-outline" id="btnBorrarVenta" style="color:#B4551D; border-color:#B4551D;">Eliminar Venta</button>` : ''}
   </div></div>`;
@@ -449,7 +449,7 @@ window.openModalVenta = (idEdit = null) => {
 
 function openModalRegistrarPago(){
   const root = document.getElementById('modalRoot'), pendientes = misVentas(STATE.miNombre).filter(v=>v.estado==="Falta Pagar");
-  root.innerHTML = `<div class="overlay" id="ov"><div class="sheet"><span class="close-x" id="closeX">✕</span><h3>Registrar pagos</h3><p class="muted" style="font-size:11px; margin-top:-6px; line-height:1.3;">Tildá únicamente las ventas por las cuales <b>ya le transferiste</b> el dinero a Economía.</p>${pendientes.length===0 ? `<div class="empty">No tenés transferencias pendientes a Economía.</div>` : `${pendientes.map(v=>`<label style="display:flex; align-items:center; gap:10px; text-transform:none; font-weight:600; opacity:1; margin:10px 0;"><input type="checkbox" class="chkPago" data-id="${v.id}" style="width:auto; margin:0;">${v.cliente} — ${v.docenas? v.docenas+' doc ':''}${v.medias? v.medias+' 1/2 doc':''}</label>`).join("")}${metodoPagoHTML('bpago', null, null)}<button class="btn btn-primary" id="btnConfirmarPagos" style="margin-top:10px;">Confirmar pagos</button>`}</div></div>`;
+  root.innerHTML = `<div class="overlay" id="ov"><div class="sheet"><span class="close-x" id="closeX">✕</span><h3>Registrar pagos</h3><p class="muted" style="font-size:11px; margin-top:-6px; line-height:1.3;">Tildá únicamente las ventas por las cuales <b>ya le pagaste</b> a Economía.</p>${pendientes.length===0 ? `<div class="empty">No tenés transferencias pendientes a Economía.</div>` : `${pendientes.map(v=>`<label style="display:flex; align-items:center; gap:10px; text-transform:none; font-weight:600; opacity:1; margin:10px 0;"><input type="checkbox" class="chkPago" data-id="${v.id}" style="width:auto; margin:0;">${v.cliente} — ${v.docenas? v.docenas+' doc ':''}${v.medias? v.medias+' 1/2 doc':''}</label>`).join("")}${metodoPagoHTML('bpago', null, null)}<button class="btn btn-primary" id="btnConfirmarPagos" style="margin-top:10px;">Confirmar pagos</button>`}</div></div>`;
   document.getElementById('closeX').onclick = ()=> root.innerHTML=""; document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') root.innerHTML=""; };
   const btn = document.getElementById('btnConfirmarPagos');
   if(btn){
