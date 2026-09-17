@@ -238,7 +238,7 @@ function metodoPagoHTML(idPrefix, metodoInit, quienInit){
       <div id="${idPrefix}_quien_wrap" style="${metodoInit==='Efectivo'?'':'display:none;'}">
         <label>¿A quién?</label>
         <select id="${idPrefix}_quien">
-          <option value="" ${!quienInit?'selected':''} disabled>Elegí a quién</option>
+          <option value="" ${!quienInit?'selected':''} disabled>Elegí a quién se lo diste</option>
           ${RECEPTORES.map(r=>`<option value="${r}" ${quienInit===r?'selected':''}>${r}</option>`).join('')}
         </select>
       </div>
