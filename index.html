@@ -236,10 +236,10 @@ function metodoPagoHTML(idPrefix, metodoInit, quienInit){
         <div class="toggle-opt ${metodoInit==='Efectivo'?'active':''}" data-v="Efectivo">Efectivo</div>
       </div>
       <div id="${idPrefix}_quien_wrap" style="${metodoInit==='Efectivo'?'':'display:none;'}">
-        <label>¿A quién se lo diste?</label>
+        <label>¿A quién?</label>
         <select id="${idPrefix}_quien">
           <option value="" ${!quienInit?'selected':''} disabled>Elegí a quién se lo diste</option>
-          ${RECEPTORES.map(r=>`<option value="${r}" ${quienInit===r?'selected':''}>$f{r}</option>`).join('')}
+          ${RECEPTORES.map(r=>`<option value="${r}" ${quienInit===r?'selected':''}>${r}</option>`).join('')}
         </select>
       </div>
     </div>
