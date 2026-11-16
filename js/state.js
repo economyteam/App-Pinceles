@@ -1,1 +1,0 @@
-let STATE = { miNombre: null, pinceles: [], config: {...DEFAULT_CONFIG}, ventas: [], asistencia: [], historial: [], sesiones: {}, minimoPagos: {}, postFeriaPagos: {}, deudaAsignada: {}, ventasMisas: {docenas: 0, medias: 0, donaciones: 0}, receta: JSON.parse(JSON.stringify(DEFAULT_RECETA)), docenasCocinar: 192, tab: "estado", economiaOn: false, ecoTab: "ventas" };
