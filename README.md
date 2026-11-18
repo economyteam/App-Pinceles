@@ -1,5 +1,5 @@
 # Pinceles — versión ordenada
-
+ 
 Frontend de Pinceles, sin frameworks ni dependencias de Node. Se puede publicar directamente en **Vercel (sitio estático)** y conserva el mismo Google Apps Script como API.
 
 ## Archivos
