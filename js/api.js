@@ -113,6 +113,9 @@ function aplicarDB(db) {
   if (db.config && typeof db.config === 'object' && Object.keys(db.config).length) {
     STATE.config = { ...DEFAULT_CONFIG, ...Object.fromEntries(
       Object.entries(db.config).filter(([, v]) => v !== null && v !== undefined && v !== '')
+  if(data.cocinaDescuentos) STATE.cocinaDescuentos = data.cocinaDescuentos;
+  if(data.inventario) STATE.inventario = data.inventario;
+  if(data.comprasMision) STATE.comprasMision = data.comprasMision;
     ) };
   }
   if (db.sesiones && typeof db.sesiones === 'object') STATE.sesiones = db.sesiones;
@@ -141,5 +144,14 @@ function aplicarDB(db) {
   }
   if (db.docenasCocinar !== undefined && db.docenasCocinar !== null) {
     STATE.docenasCocinar = Number(db.docenasCocinar) || 0;
+  }
+  if (db.cocinaDescuentos && typeof db.cocinaDescuentos === 'object') {
+    STATE.cocinaDescuentos = db.cocinaDescuentos;
+  }
+  if (db.inventario && typeof db.inventario === 'object') {
+    STATE.inventario = db.inventario;
+  }
+  if (db.comprasMision && typeof db.comprasMision === 'object') {
+    STATE.comprasMision = db.comprasMision;
   }
 }
