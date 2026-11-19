@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Pinceles · La app ignaciana</title>
 <meta name="theme-color" content="#FBF3E2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,11 +16,11 @@
     <div class="brand">
       <div><div class="brand-title" id="topTitle">Pinceles</div><div class="brand-sub" id="topSub">La app ignaciana</div></div>
     </div>
-    <div id="headerActions" style="display:flex; gap:10px; align-items:center;"></div>
+    <div id="headerActions"></div>
   </div>
   <svg class="stroke-divider" viewBox="0 0 400 26" preserveAspectRatio="none"><path class="stroke-path" d="M2 18 C60 4, 120 26, 200 12 S 340 2, 398 16" stroke="var(--rojo)" stroke-width="5" fill="none" stroke-linecap="round"/><path class="stroke-path" d="M2 18 C60 4, 120 26, 200 12 S 340 2, 398 16" stroke="var(--dorado)" stroke-width="2" fill="none" stroke-linecap="round" style="animation-delay:.3s"/></svg>
   <main id="main"></main>
-  <div class="bottomnav" id="bottomNav"></div>
+  <nav class="bottomnav" id="bottomNav" aria-label="Navegación principal"></nav>
   <div id="modalRoot"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -40,12 +40,13 @@
 </div>
 
 
-<script defer src="./js/config.js"></script>
 <script defer src="./js/calculos.js"></script>
+<script defer src="./js/config.js"></script>
 <script defer src="./js/state.js"></script>
 <script defer src="./js/api.js"></script>
 <script defer src="./js/shared.js"></script>
 <script defer src="./js/pincel.js"></script>
+<script defer src="./js/resultados.js"></script>
 <script defer src="./js/economia.js"></script>
 <script defer src="./js/app.js"></script>
 </body>

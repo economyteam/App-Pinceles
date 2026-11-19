@@ -1,33 +1,4 @@
 /* ============================= ECONOMY ============================= */
-// Fija y centra la barra de navegación inferior sin tapar los modales
-(function fixBottomNavCSS(){
-  if(document.getElementById('fix-bnav-style')) return;
-  const st = document.createElement('style');
-  st.id = 'fix-bnav-style';
-  st.textContent = `
-    #bottomNav {
-      position: fixed !important;
-      bottom: 0 !important;
-      left: 50% !important;
-      right: auto !important;
-      transform: translateX(-50%) !important;
-      width: 100% !important;
-      max-width: 480px !important;
-      margin: 0 !important;
-      box-sizing: border-box !important;
-      z-index: 40 !important;
-      background: var(--crema, #FDF8EE);
-      border-top: 1.5px solid #E7DCC3;
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.06);
-    }
-    #bottomNav:empty { display: none !important; }
-    #bottomNav:not(:empty) { display: flex !important; }
-    .overlay { z-index: 1000 !important; }
-    #main { padding-bottom: 95px !important; }
-  `;
-  document.head.appendChild(st);
-})();
-
 function openPinModal(){
   const root = document.getElementById('modalRoot');
   let entered = "";
@@ -49,6 +20,7 @@ function openPinModal(){
             STATE.ecoTab = "ventas";
             root.innerHTML="";
             render();
+            void actualizarVentasAlVolver();
           } else {
             toast("PIN incorrecto", true);
             entered="";
@@ -63,11 +35,10 @@ function openPinModal(){
 function renderTopAreaSwitchEconomia(){
   const area = STATE.ecoArea || "feria";
   return `
-    <div style="display:flex; gap:6px; background:#E7DCC3; padding:5px; border-radius:14px; margin-bottom:16px;">
-      <button class="btn-area-eco" data-area="feria" style="flex:1; border:none; padding:9px 4px; border-radius:10px; font-weight:800; font-size:11.5px; cursor:pointer; text-transform:uppercase; letter-spacing:0.03em; background:${area==='feria'?'var(--rojo)':'transparent'}; color:${area==='feria'?'var(--blanco)':'var(--tinta)'};">🥟 Feria</button>
-      <button class="btn-area-eco" data-area="mision" style="flex:1; border:none; padding:9px 4px; border-radius:10px; font-weight:800; font-size:11.5px; cursor:pointer; text-transform:uppercase; letter-spacing:0.03em; background:${area==='mision'?'var(--rojo)':'transparent'}; color:${area==='mision'?'var(--blanco)':'var(--tinta)'};">⛺ Misión</button>
-      <button class="btn-area-eco" data-area="config" style="flex:1; border:none; padding:9px 4px; border-radius:10px; font-weight:800; font-size:11.5px; cursor:pointer; text-transform:uppercase; letter-spacing:0.03em; background:${area==='config'?'var(--rojo)':'transparent'}; color:${area==='config'?'var(--blanco)':'var(--tinta)'};">⚙️ Config</button>
-    </div>
+    <nav class="eco-areas" aria-label="Áreas de Economía">
+      ${[['feria', 'Feria'], ['mision', 'Misión'], ['config', 'Configuración']].map(([id, etiqueta]) =>
+        `<button class="btn-area-eco" data-area="${id}" aria-pressed="${area === id}">${etiqueta}</button>`).join('')}
+    </nav>
   `;
 }
 
@@ -80,6 +51,7 @@ function wireTopAreaSwitchEconomia(){
       else if(nuevaArea === 'mision') STATE.ecoTab = 'inventario';
       else if(nuevaArea === 'config') STATE.ecoTab = 'config';
       render();
+      if (STATE.ecoTab === 'ventas') void actualizarVentasAlVolver();
     };
   });
 }
@@ -92,7 +64,7 @@ function renderBottomNavEconomia(){
       {id:"ventas", label:"Ventas", icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2l1.5 4h9L18 2"/><path d="M3.5 6h17l-1.6 12.5A2 2 0 0117 20H7a2 2 0 01-1.9-1.5L3.5 6z"/></svg>`},
       {id:"compras", label:"Compras", icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>`},
       {id:"resultados", label:"Resultados", icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`},
-      {id:"control_docenas", label:"Control Doc.", icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`}
+      {id:"control_docenas", label:"Control de docenas", icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`}
     ];
   } else if(area === "mision"){
     items = [
@@ -108,7 +80,14 @@ function renderBottomNavEconomia(){
     nav.innerHTML = "";
   } else {
     nav.innerHTML = items.map(it=>`<button class="nav-btn ${STATE.ecoTab===it.id?'active':''}" data-etab="${it.id}">${it.icon}<span>${it.label}</span></button>`).join("");
-    document.querySelectorAll('.nav-btn').forEach(b=>{ b.onclick = ()=>{ STATE.ecoTab = b.dataset.etab; render(); }; });
+    nav.querySelectorAll('.nav-btn').forEach(b => {
+      b.onclick = () => {
+        STATE.ecoTab = b.dataset.etab;
+        if (STATE.ecoTab === 'resultados') volverAListaFerias();
+        render();
+        if (STATE.ecoTab === 'ventas') void actualizarVentasAlVolver();
+      };
+    });
   }
 }
 
@@ -136,14 +115,32 @@ function renderEconomia(){
 /* --------------------- CONFIGURACIÓN --------------------- */
 function renderEcoConfig(main){
   const c = STATE.config || {};
-  main.innerHTML = `<h2 class="section-title">Parámetros de la misión</h2><div class="card"><label>Mínimo de misión ($)</label><input type="number" id="cMinimo" value="${c.pagoMinimo ?? 0}"><label>Horas para pagar la misión</label><input type="number" id="cHorasObj" value="${c.horasObjetivo ?? 0}"><label>Valor 1 hora ($)</label><input type="number" id="cHora" value="${c.valorHora ?? 0}"><label>Precio 1 docena ($)</label><input type="number" id="cDocena" value="${c.valorDocena ?? 0}"><label>Precio 1/2 docena ($)</label><input type="number" id="cMedia" value="${c.valorMediaDocena ?? 0}"><label>Porcentaje Solidario (%)</label><input type="number" id="cPorc" value="${c.porcentajeSolidario ?? 0}"><label>PIN del panel EconomyTeam</label><input type="text" id="cPin" value="${escapeHTML(c.pin || '0406')}" maxlength="4"><button class="btn btn-primary" id="btnGuardarConfig">Guardar cambios</button></div>`;
+  const campos = [
+    ['pagoMinimo', 'cMinimo', 'Mínimo de misión ($)'],
+    ['horasObjetivo', 'cHorasObj', 'Horas para pagar la misión'],
+    ['valorHora', 'cHora', 'Valor de 1 hora ($)'],
+    ['valorDocena', 'cDocena', 'Precio de 1 docena ($)'],
+    ['valorMediaDocena', 'cMedia', 'Precio de ½ docena ($)'],
+    ['porcentajeSolidario', 'cPorc', 'Porcentaje solidario (%)']
+  ];
+  main.innerHTML = `
+    <h2 class="section-title">Parámetros de la misión</h2>
+    <div class="card">
+      <div class="form-grid">
+        ${campos.map(([clave, id, etiqueta]) => `<div><label for="${id}">${etiqueta}</label><input type="number" id="${id}" min="0" step="any" value="${escapeHTML(c[clave] ?? 0)}"></div>`).join('')}
+        <div><label for="cPin">PIN del panel EconomyTeam</label><input type="text" id="cPin" inputmode="numeric" value="${escapeHTML(c.pin || '0406')}" maxlength="4"></div>
+      </div>
+      <button class="btn btn-primary" id="btnGuardarConfig">Guardar cambios</button>
+    </div>
+    <h2 class="section-title">Reiniciar misión</h2>
+    <div class="card">
+      <p>El reinicio conserva el padrón y archiva un resumen con los gastos de Misión. Se vacían las ventas, las horas, los pagos y el inventario actual.</p>
+      <button class="btn btn-outline" id="btnReiniciarMision">${reinicioPendiente ? 'Reintentar reinicio' : 'Archivar y reiniciar misión'}</button>
+    </div>`;
+  document.getElementById('btnReiniciarMision').onclick = reiniciarMision;
   document.getElementById('btnGuardarConfig').onclick = async () => {
-    const campos = {
-      pagoMinimo: 'cMinimo', horasObjetivo: 'cHorasObj', valorHora: 'cHora',
-      valorDocena: 'cDocena', valorMediaDocena: 'cMedia', porcentajeSolidario: 'cPorc'
-    };
     const valores = {};
-    for (const [clave, id] of Object.entries(campos)) {
+    for (const [clave, id] of campos) {
       const input = document.getElementById(id);
       const n = Number(input.value);
       if (input.value.trim() === '' || !Number.isFinite(n) || n < 0) {
@@ -159,11 +156,11 @@ function renderEcoConfig(main){
     if (!/^\d{4}$/.test(pin)) {
       toast('El PIN debe tener exactamente 4 números.', true); return;
     }
-    const prevConfig = snapshot(STATE.config);
-    try { await api('SYNC'); } catch(e){}
-    STATE.config = { ...STATE.config, ...valores, pin };
-    toast('Guardando configuración…'); render();
-    apiBackground('SET_SYS', { key: 'config', value: STATE.config }, () => { STATE.config = prevConfig; });
+    try {
+      await api('UPDATE_CONFIG', { cambios: { ...valores, pin } });
+      render();
+      toast('Configuración guardada.');
+    } catch (_) {}
   };
 }
 
@@ -245,11 +242,21 @@ function renderEcoVentas(main){
   const crudasDocEq = totCrudasDoc + totCrudasMed*0.5;
   const cocidasDocEq = totCocidasDoc + totCocidasMed*0.5;
   const totalEq = crudasDocEq + cocidasDocEq;
-  const cerradas = !!(STATE.config && STATE.config.ventasCerradas);
-  const pincelesConVentas = [...new Set(ventas.map(v=>v.pincel))].sort((a,b)=>String(a).localeCompare(String(b)));
+  const cerradas = STATE.config.ventasCerradas;
+  const ventasPorPincel = new Map();
+  for (const venta of ventas) {
+    if (!ventasPorPincel.has(venta.pincel)) ventasPorPincel.set(venta.pincel, []);
+    ventasPorPincel.get(venta.pincel).push(venta);
+  }
+  const detalle = [...ventasPorPincel].map(([nombre, pedidos]) => ({
+    nombre,
+    pedidos,
+    deuda: Calculos.totalPendiente(pedidos, STATE.config),
+    docenas: pedidos.reduce((total, pedido) => total + docenasEquiv(pedido), 0)
+  }));
 
   main.innerHTML = `
-    <div class="card" style="display:flex; justify-content:space-between; align-items:center; gap:10px; background:${cerradas ? '#FBE7DA' : '#E8F3E8'}; border:1.5px solid ${cerradas ? '#B4551D' : 'var(--oliva)'};">
+    <div class="card estado-ventas" style="background:${cerradas ? '#FBE7DA' : '#E8F3E8'}; border:1.5px solid ${cerradas ? '#B4551D' : 'var(--oliva)'};">
       <div>
         <div style="font-weight:800; font-size:13.5px; color:${cerradas ? '#B4551D' : 'var(--oliva)'};">${cerradas ? '🔒 Ventas de Pinceles CERRADAS' : '🟢 Ventas de Pinceles ABIERTAS'}</div>
         <div style="font-size:11px; opacity:.85;">${cerradas ? 'Solo pueden marcar pagos y retiros.' : 'Pueden anotar y editar ventas.'}</div>
@@ -279,41 +286,65 @@ function renderEcoVentas(main){
       </div>
     </div>
 
-    <h2 class="section-title" style="margin-top:20px;">Detalle por Pincel</h2>
-    <div class="card">
-      ${pincelesConVentas.length===0 ? `<div class="empty">Todavía no hay ventas cargadas.</div>` : pincelesConVentas.map(p=>{
-        const vs = ventas.filter(x=>x.pincel===p);
-        const impagas = vs.filter(x=>x.estado==='Falta Pagar');
-        const retiradas = vs.filter(x=>x.retirado);
-        const dImp = impagas.reduce((a,x)=>a+(Number(x.docenas)||0),0), mImp = impagas.reduce((a,x)=>a+(Number(x.medias)||0),0);
-        const dRet = retiradas.reduce((a,x)=>a+(Number(x.docenas)||0),0), mRet = retiradas.reduce((a,x)=>a+(Number(x.medias)||0),0);
-        const dTot = vs.reduce((a,x)=>a+(Number(x.docenas)||0),0), mTot = vs.reduce((a,x)=>a+(Number(x.medias)||0),0);
-        const plataImpaga = Calculos.totalPendiente(vs, STATE.config);
-        return `
-          <div class="list-item" style="flex-direction:column; align-items:flex-start; gap:6px;">
-            <div class="row-between" style="width:100%;">
-              <div class="li-name">${escapeHTML(p)}</div>
-              <span class="badge badge-neutral">${totalDocenasDe(p)} doc. vendidas</span>
-            </div>
-            <div style="font-size:11.5px; color:var(--tinta); opacity:.85;">
-              📦 Retiró: <b>${dRet} doc.</b> y <b>${mRet} medias</b> <span style="opacity:.7;">(de ${dTot} doc. y ${mTot} medias)</span>
-            </div>
-            ${plataImpaga > 0 ? `<div style="font-size:11.5px; color:#B4551D; background:#FBE7DA; padding:4px 8px; border-radius:6px; width:100%;">Adeuda pagar: <b>${fmt$(plataImpaga)}</b> (${dImp} doc, ${mImp} meds)</div>` : `<div style="font-size:11.5px; color:var(--oliva); font-weight:700;">Pagos al día ✅</div>`}
-          </div>
-        `;
-      }).join("")}
+    <div class="detalle-ventas-encabezado">
+      <h2 class="section-title">Detalle por Pincel</h2>
+      <div class="orden-ventas">
+        <label for="ordenVentasPinceles">Ordenar por</label>
+        <div class="selector-redondeado">
+          <select id="ordenVentasPinceles" ${detalle.length ? '' : 'disabled'}>
+            <option value="deuda">Mayor deuda</option>
+            <option value="docenas">Más docenas vendidas</option>
+            <option value="nombre">Pincel (A–Z)</option>
+          </select>
+        </div>
+      </div>
     </div>
+    <div class="card" id="detalleVentasPinceles"></div>
   `;
+
+  const orden = main.querySelector('#ordenVentasPinceles');
+  const lista = main.querySelector('#detalleVentasPinceles');
+  orden.value = STATE.ecoOrdenVentas;
+  function mostrarDetalle() {
+    const campo = STATE.ecoOrdenVentas;
+    detalle.sort((a, b) => (campo === 'nombre' ? 0 : b[campo] - a[campo]) ||
+      String(a.nombre).localeCompare(String(b.nombre), 'es-AR'));
+    lista.innerHTML = detalle.length ? detalle.map(({ nombre, pedidos, deuda, docenas }) => {
+      const impagas = pedidos.filter(pedido => pedido.estado === 'Falta Pagar');
+      const retiradas = pedidos.filter(pedido => pedido.retirado);
+      const dImp = impagas.reduce((a, x) => a + (Number(x.docenas) || 0), 0), mImp = impagas.reduce((a, x) => a + (Number(x.medias) || 0), 0);
+      const dRet = retiradas.reduce((a, x) => a + (Number(x.docenas) || 0), 0), mRet = retiradas.reduce((a, x) => a + (Number(x.medias) || 0), 0);
+      const dTot = pedidos.reduce((a, x) => a + (Number(x.docenas) || 0), 0), mTot = pedidos.reduce((a, x) => a + (Number(x.medias) || 0), 0);
+      return `
+        <div class="list-item" style="flex-direction:column; align-items:flex-start; gap:6px;">
+          <div class="row-between" style="width:100%;">
+            <div class="li-name">${escapeHTML(nombre)}</div>
+            <span class="badge badge-neutral">${docenas} doc. vendidas</span>
+          </div>
+          <div style="font-size:11.5px; color:var(--tinta); opacity:.85;">
+            📦 Retiró: <b>${dRet} doc.</b> y <b>${mRet} medias</b> <span style="opacity:.7;">(de ${dTot} doc. y ${mTot} medias)</span>
+          </div>
+          ${deuda > 0 ? `<div style="font-size:11.5px; color:#B4551D; background:#FBE7DA; padding:4px 8px; border-radius:6px; width:100%;">Adeuda pagar: <b>${fmt$(deuda)}</b> (${dImp} doc, ${mImp} meds)</div>` : `<div style="font-size:11.5px; color:var(--oliva); font-weight:700;">Pagos al día ✅</div>`}
+        </div>`;
+    }).join('') : '<div class="empty">Todavía no hay ventas cargadas.</div>';
+  }
+  orden.onchange = () => {
+    STATE.ecoOrdenVentas = orden.value;
+    mostrarDetalle();
+  };
+  mostrarDetalle();
 
   document.getElementById('btnToggleVentas').onclick = async () => {
     const accion = cerradas ? "reabrir" : "cerrar";
     if(!confirm(`¿Seguro que querés ${accion} las ventas para todos los Pinceles?`)) return;
-    const prevConfig = snapshot(STATE.config);
-    try { await api('SYNC'); } catch(e){}
-    STATE.config.ventasCerradas = !cerradas;
-    toast(STATE.config.ventasCerradas ? "Ventas cerradas 🔒" : "Ventas reabiertas 🟢");
-    render();
-    apiBackground('SET_SYS', { key: 'config', value: STATE.config }, () => { STATE.config = prevConfig; });
+    try {
+      const respuesta = await api('SET_VENTAS_CERRADAS', { cerradas: !cerradas, idMision: idMisionActual(STATE.historial) });
+      if (!respuesta.config || STATE.config.ventasCerradas === cerradas) {
+        toast('Google todavía no confirmó el cambio. Intentá de nuevo.', true); return;
+      }
+      render();
+      toast(STATE.config.ventasCerradas ? 'Ventas cerradas.' : 'Ventas reabiertas.');
+    } catch (_) {}
   };
 
   document.getElementById('btnGuardarMisas').onclick = ()=>{
@@ -350,14 +381,15 @@ function renderEcoControlDocenas(main){
 
   const arrCrudas = Object.entries(crudasMap).sort((a,b)=>a[0].localeCompare(b[0]));
   const arrCocidas = Object.entries(cocidasMap).sort((a,b)=>a[0].localeCompare(b[0]));
+  const hechoEnRango = (valor, max) => Math.min(max, Math.max(0, Number(valor) || 0));
 
   const calcTotales = (arr, tipoKey) => {
     let totD = 0, totM = 0, restD = 0, restM = 0;
     arr.forEach(([p, tot]) => {
       const h = STATE.cocinaDescuentos[`${tipoKey}_${p}`] || {d:0, m:0};
       totD += tot.d; totM += tot.m;
-      restD += Math.max(0, tot.d - (Number(h.d)||0));
-      restM += Math.max(0, tot.m - (Number(h.m)||0));
+      restD += tot.d - hechoEnRango(h.d, tot.d);
+      restM += tot.m - hechoEnRango(h.m, tot.m);
     });
     return { totD, totM, restD, restM };
   };
@@ -373,41 +405,41 @@ function renderEcoControlDocenas(main){
       rowsHTML = arr.map(([p, tot]) => {
         const key = `${tipoKey}_${p}`;
         const hecho = STATE.cocinaDescuentos[key] || {d:0, m:0};
-        const restD = Math.max(0, tot.d - (Number(hecho.d)||0));
-        const restM = Math.max(0, tot.m - (Number(hecho.m)||0));
+        const restD = tot.d - hechoEnRango(hecho.d, tot.d);
+        const restM = tot.m - hechoEnRango(hecho.m, tot.m);
         const listoTodo = restD === 0 && restM === 0;
 
         return `
           <div class="list-item" style="flex-direction:column; align-items:stretch; gap:8px; opacity:${listoTodo ? '0.55' : '1'};">
-            <div class="row-between">
+            <div class="row-between cocina-fila-titulo">
               <div class="li-name" style="display:flex; align-items:center; gap:6px;">
                 ${escapeHTML(p)}
                 ${listoTodo ? `<span class="badge badge-ok" style="font-size:10px;">¡Listo! ✅</span>` : ''}
               </div>
               <span style="font-size:11px; opacity:.7;">Total pedido: ${tot.d} doc · ${tot.m} med</span>
             </div>
-            <div style="display:flex; gap:10px;">
+            <div class="cocina-contadores">
               ${tot.d > 0 ? `
-                <div style="flex:1; background:var(--crema-2); padding:8px; border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
+                <div class="cocina-contador">
                   <div>
                     <div style="font-size:10px; font-weight:800; text-transform:uppercase; opacity:.7;">Faltan Doc.</div>
                     <div style="font-size:18px; font-weight:900; color:${restD===0?'var(--oliva)':'var(--rojo)'};">${restD} <span style="font-size:11px; font-weight:600; opacity:.6;">/ ${tot.d}</span></div>
                   </div>
-                  <div style="display:flex; gap:4px;">
-                    <button class="btn-desc-cocina" data-key="${escapeHTML(key)}" data-field="d" data-max="${tot.d}" data-delta="1" title="Descontar 1 hecha" style="width:36px; height:32px; background:var(--rojo); color:white; border:none; border-radius:8px; font-weight:800; font-size:13px; padding:0; display:inline-flex; align-items:center; justify-content:center; cursor:pointer;">−1</button>
-                    <button class="btn-desc-cocina" data-key="${escapeHTML(key)}" data-field="d" data-max="${tot.d}" data-delta="-1" title="Deshacer" style="width:30px; height:32px; background:#E7DCC3; color:var(--tinta); border:none; border-radius:8px; font-weight:700; font-size:12px; padding:0; display:inline-flex; align-items:center; justify-content:center; cursor:pointer;">+1</button>
+                  <div class="cocina-acciones">
+                    <button class="btn-desc-cocina" data-key="${escapeHTML(key)}" data-pincel="${escapeHTML(p)}" data-tipo="${tipoKey}" data-field="d" data-max="${tot.d}" data-delta="1" aria-label="Marcar una docena ${tipoKey.toLowerCase()} de ${escapeHTML(p)}" ${restD === 0 ? 'disabled' : ''}>−1</button>
+                    <button class="btn-desc-cocina" data-key="${escapeHTML(key)}" data-pincel="${escapeHTML(p)}" data-tipo="${tipoKey}" data-field="d" data-max="${tot.d}" data-delta="-1" aria-label="Deshacer una docena ${tipoKey.toLowerCase()} de ${escapeHTML(p)}" ${restD === tot.d ? 'disabled' : ''}>+1</button>
                   </div>
                 </div>
               ` : ''}
               ${tot.m > 0 ? `
-                <div style="flex:1; background:var(--crema-2); padding:8px; border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
+                <div class="cocina-contador">
                   <div>
                     <div style="font-size:10px; font-weight:800; text-transform:uppercase; opacity:.7;">Faltan 1/2</div>
                     <div style="font-size:18px; font-weight:900; color:${restM===0?'var(--oliva)':'var(--rojo)'};">${restM} <span style="font-size:11px; font-weight:600; opacity:.6;">/ ${tot.m}</span></div>
                   </div>
-                  <div style="display:flex; gap:4px;">
-                    <button class="btn-desc-cocina" data-key="${escapeHTML(key)}" data-field="m" data-max="${tot.m}" data-delta="1" title="Descontar 1 hecha" style="width:36px; height:32px; background:var(--rojo); color:white; border:none; border-radius:8px; font-weight:800; font-size:13px; padding:0; display:inline-flex; align-items:center; justify-content:center; cursor:pointer;">−1</button>
-                    <button class="btn-desc-cocina" data-key="${escapeHTML(key)}" data-field="m" data-max="${tot.m}" data-delta="-1" title="Deshacer" style="width:30px; height:32px; background:#E7DCC3; color:var(--tinta); border:none; border-radius:8px; font-weight:700; font-size:12px; padding:0; display:inline-flex; align-items:center; justify-content:center; cursor:pointer;">+1</button>
+                  <div class="cocina-acciones">
+                    <button class="btn-desc-cocina" data-key="${escapeHTML(key)}" data-pincel="${escapeHTML(p)}" data-tipo="${tipoKey}" data-field="m" data-max="${tot.m}" data-delta="1" aria-label="Marcar una media docena ${tipoKey.toLowerCase()} de ${escapeHTML(p)}" ${restM === 0 ? 'disabled' : ''}>−1</button>
+                    <button class="btn-desc-cocina" data-key="${escapeHTML(key)}" data-pincel="${escapeHTML(p)}" data-tipo="${tipoKey}" data-field="m" data-max="${tot.m}" data-delta="-1" aria-label="Deshacer una media docena ${tipoKey.toLowerCase()} de ${escapeHTML(p)}" ${restM === tot.m ? 'disabled' : ''}>+1</button>
                   </div>
                 </div>
               ` : ''}
@@ -439,101 +471,92 @@ function renderEcoControlDocenas(main){
       </div>
     </div>
     <p class="muted" style="font-size:11.5px; margin:-4px 0 12px;">Tocá <b>−1</b> a medida que vayan armando cada docena o media docena hasta llegar a 0 (tocá +1 si te pasaste).</p>
-    ${renderTablaControl(arrCrudas, 'Crudas', 'var(--rojo)', '🥟 Detalle Crudas')}
-    ${renderTablaControl(arrCocidas, 'Cocidas', 'var(--dorado)', '🥟 Detalle Cocidas')}
+    <div class="eco-columnas">
+      ${renderTablaControl(arrCrudas, 'Crudas', 'var(--rojo)', 'Detalle crudas')}
+      ${renderTablaControl(arrCocidas, 'Cocidas', 'var(--dorado)', 'Detalle cocidas')}
+    </div>
   `;
 
   document.querySelectorAll('.btn-desc-cocina').forEach(btn => {
     btn.onclick = () => {
-      const key = btn.dataset.key;
-      const field = btn.dataset.field;
+      const { key, field, pincel, tipo } = btn.dataset;
       const max = Number(btn.dataset.max) || 0;
       const delta = Number(btn.dataset.delta) || 0;
       const prev = snapshot(STATE.cocinaDescuentos);
 
       if(!STATE.cocinaDescuentos[key]) STATE.cocinaDescuentos[key] = {d:0, m:0};
-      const actualHecho = Number(STATE.cocinaDescuentos[key][field]) || 0;
-      const nuevoHecho = Math.min(max, Math.max(0, actualHecho + delta));
+      const actualHecho = hechoEnRango(STATE.cocinaDescuentos[key][field], max);
+      const nuevoHecho = hechoEnRango(actualHecho + delta, max);
       STATE.cocinaDescuentos[key][field] = nuevoHecho;
 
       render();
-      apiBackground('SET_SYS', { key: 'cocina_descuentos', value: STATE.cocinaDescuentos }, () => { STATE.cocinaDescuentos = prev; });
+      apiBackground('ADJUST_COCINA', {
+        pincel, tipo, campo: field, delta, idMision: idMisionActual(STATE.historial), idOperacion: nuevoIdOperacion()
+      }, () => { STATE.cocinaDescuentos = prev; });
     };
   });
 }
 
 /* --------------------- MISIÓN: INVENTARIO --------------------- */
 function renderEcoInventario(main){
-  if(!STATE.inventario || !Array.isArray(STATE.inventario.items)){
-    STATE.inventario = { fecha: new Date().toISOString().slice(0,10), items: [] };
-  }
   const inv = STATE.inventario;
+  const idMision = idMisionActual(STATE.historial);
 
   main.innerHTML = `
     <h2 class="section-title">Inventario de Misión</h2>
     <div class="card">
-      <label>Fecha en la que se inventarió</label>
+      <label for="invFecha">Fecha del inventario</label>
       <input type="date" id="invFecha" value="${escapeHTML(inv.fecha || '')}">
-      
-      <div style="display:flex; gap:6px; font-size:10.5px; font-weight:800; text-transform:uppercase; opacity:.65; margin:10px 0 6px; padding:0 2px;">
-        <div style="flex:2;">Ítem</div>
-        <div style="flex:1;">U. Medida</div>
-        <div style="width:70px; text-align:center;">Cantidad</div>
-        <div style="width:28px;"></div>
-      </div>
-      
-      <div id="invLista">
-        ${inv.items.length === 0 ? `<div class="empty" style="padding:12px 0;">Lista en blanco. Tocá "+ Agregar ítem" abajo para empezar.</div>` : inv.items.map((it, idx) => `
-          <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px;">
-            <input class="inv-nombre" data-idx="${idx}" value="${escapeHTML(it.nombre || '')}" placeholder="Ej: Arroz" style="flex:2; margin:0; padding:8px;">
-            <input class="inv-unidad" data-idx="${idx}" value="${escapeHTML(it.unidad || '')}" placeholder="kg / u / L" style="flex:1; margin:0; padding:8px;">
-            <input type="number" step="any" class="inv-cantidad" data-idx="${idx}" value="${it.cantidad ?? ''}" placeholder="0" style="width:70px; margin:0; padding:8px; text-align:center;">
-            <button class="btn-del-inv" data-idx="${idx}" style="width:28px; height:34px; border:none; background:#FBE7DA; color:#B4551D; border-radius:8px; font-weight:800; cursor:pointer;">✕</button>
-          </div>
-        `).join("")}
-      </div>
-
-      <button class="btn btn-outline btn-sm" id="btnAddInvItem" style="margin-top:8px; width:100%;">＋ Agregar ítem</button>
+      <p class="empty" id="invVacio">Todavía no hay ítems en el inventario.</p>
+      <div id="invLista"></div>
+      <button class="btn btn-outline" id="btnAddInvItem" style="margin-top:8px;">＋ Agregar ítem</button>
       <button class="btn btn-primary" id="btnGuardarInventario" style="margin-top:12px;">Guardar inventario</button>
-    </div>
-  `;
+    </div>`;
 
-  const syncInputsToMemory = () => {
-    STATE.inventario.fecha = document.getElementById('invFecha').value;
-    document.querySelectorAll('.inv-nombre').forEach(inp => {
-      const i = Number(inp.dataset.idx);
-      if(STATE.inventario.items[i]) STATE.inventario.items[i].nombre = inp.value;
-    });
-    document.querySelectorAll('.inv-unidad').forEach(inp => {
-      const i = Number(inp.dataset.idx);
-      if(STATE.inventario.items[i]) STATE.inventario.items[i].unidad = inp.value;
-    });
-    document.querySelectorAll('.inv-cantidad').forEach(inp => {
-      const i = Number(inp.dataset.idx);
-      if(STATE.inventario.items[i]) STATE.inventario.items[i].cantidad = inp.value === '' ? 0 : Number(inp.value);
-    });
-  };
-
-  document.getElementById('btnAddInvItem').onclick = () => {
-    syncInputsToMemory();
-    STATE.inventario.items.push({ nombre: "", unidad: "", cantidad: 0 });
-    render();
-  };
-
-  document.querySelectorAll('.btn-del-inv').forEach(b => {
-    b.onclick = () => {
-      syncInputsToMemory();
-      STATE.inventario.items.splice(Number(b.dataset.idx), 1);
-      render();
+  const lista = document.getElementById('invLista');
+  const vacio = document.getElementById('invVacio');
+  function agregarFila(item = {}) {
+    lista.insertAdjacentHTML('beforeend', `<div class="inv-fila">
+      <label class="inv-campo inv-item">Ítem<input class="inv-nombre" value="${escapeHTML(item.nombre)}" placeholder="Ej: Arroz"></label>
+      <label class="inv-campo">U. de medida<input class="inv-unidad" value="${escapeHTML(item.unidad)}" placeholder="kg / u / L"></label>
+      <label class="inv-campo">Cantidad<input type="number" min="0" step="any" class="inv-cantidad" value="${escapeHTML(item.cantidad)}"></label>
+      <button type="button" class="btn-del-inv" aria-label="Quitar ítem">✕</button>
+    </div>`);
+    const fila = lista.lastElementChild;
+    fila.querySelector('.btn-del-inv').onclick = () => {
+      fila.remove();
+      vacio.hidden = Boolean(lista.children.length);
     };
-  });
+    vacio.hidden = true;
+    return fila;
+  }
 
-  document.getElementById('btnGuardarInventario').onclick = () => {
-    syncInputsToMemory();
-    const prevInv = snapshot(STATE.inventario);
-    STATE.inventario.items = STATE.inventario.items.filter(x => x.nombre.trim() !== '' || x.unidad.trim() !== '' || Number(x.cantidad) > 0);
-    toast("Guardando inventario…"); render();
-    apiBackground('SET_SYS', { key: 'inventario', value: STATE.inventario }, () => { STATE.inventario = prevInv; });
+  (inv.items || []).forEach(agregarFila);
+  document.getElementById('btnAddInvItem').onclick = () => agregarFila().querySelector('.inv-nombre').focus();
+  document.getElementById('btnGuardarInventario').onclick = async () => {
+    const fecha = document.getElementById('invFecha').value;
+    const items = [];
+    for (const fila of lista.children) {
+      const campoNombre = fila.querySelector('.inv-nombre');
+      const nombre = campoNombre.value.trim();
+      const unidad = fila.querySelector('.inv-unidad').value.trim();
+      const campoCantidad = fila.querySelector('.inv-cantidad');
+      const cantidad = Number(campoCantidad.value);
+      if (!campoCantidad.validity.valid || !Number.isFinite(cantidad)) {
+        toast('Ingresá una cantidad igual o mayor a cero.', true);
+        campoCantidad.focus();
+        return;
+      }
+      if (!nombre && !unidad && campoCantidad.value === '') continue;
+      if (!nombre) { toast('Completá el nombre del ítem.', true); campoNombre.focus(); return; }
+      items.push({ nombre, unidad, cantidad });
+    }
+    try {
+      const respuesta = await api('SET_SYS', { key: 'inventario', value: { fecha, items }, idMision });
+      if (!respuesta.inventario) { toast('Google todavía no confirmó el inventario. Intentá de nuevo.', true); return; }
+      render();
+      toast('Inventario guardado.');
+    } catch (_) {}
   };
 }
 
@@ -552,25 +575,32 @@ function renderEcoComprasMision(main){
 
   main.innerHTML = `
     <h2 class="section-title">Compras de la Misión</h2>
-    <p class="muted" style="font-size:11.5px; margin:-6px 0 12px;">Cargá acá los gastos generales para la misión. Al reiniciar la misión, quedan archivados en la base de datos para control.</p>
     <div class="card">
-      ${rubros.map(r => `
-        <label>${r.label} ($)</label>
-        <input type="number" min="0" step="any" class="inp-compra-mision" data-k="${r.k}" value="${Number(cm[r.k])||0}">
-      `).join("")}
+      <div class="form-grid">
+        ${rubros.map(r => `<div>
+          <label for="compra-${r.k}">${r.label} ($)</label>
+          <input type="number" min="0" step="any" id="compra-${r.k}" class="inp-compra-mision" data-k="${r.k}" value="${Number(cm[r.k])||0}">
+        </div>`).join("")}
+      </div>
       <div style="height:1px; background:#EEE1C4; margin:14px 0;"></div>
       <div class="row-between">
         <strong>Total gastado en Misión</strong>
-        <strong style="color:var(--rojo); font-size:18px;">${fmt$(total)}</strong>
+        <strong id="totalComprasMision" style="color:var(--rojo); font-size:18px;">${fmt$(total)}</strong>
       </div>
       <button class="btn btn-primary" id="btnGuardarComprasMision" style="margin-top:14px;">Guardar gastos de misión</button>
     </div>
   `;
 
-  document.getElementById('btnGuardarComprasMision').onclick = () => {
-    const prev = snapshot(STATE.comprasMision);
+  const idMision = idMisionActual(STATE.historial);
+  const campos = main.querySelectorAll('.inp-compra-mision');
+  for (const campo of campos) {
+    campo.oninput = () => {
+      document.getElementById('totalComprasMision').textContent = fmt$([...campos].reduce((suma, input) => suma + (Number(input.value) || 0), 0));
+    };
+  }
+  document.getElementById('btnGuardarComprasMision').onclick = async () => {
     const nuevo = {};
-    for(const inp of document.querySelectorAll('.inp-compra-mision')){
+    for(const inp of campos){
       const val = Number(inp.value);
       if(inp.value.trim() === '' || !Number.isFinite(val) || val < 0){
         toast("Ingresá montos mayores o iguales a cero.", true);
@@ -578,21 +608,29 @@ function renderEcoComprasMision(main){
       }
       nuevo[inp.dataset.k] = val;
     }
-    STATE.comprasMision = nuevo;
-    toast("Gastos de misión guardados ✅"); render();
-    apiBackground('SET_SYS', { key: 'compras_mision', value: nuevo }, () => { STATE.comprasMision = prev; });
+    try {
+      const respuesta = await api('SET_SYS', { key: 'compras_mision', value: nuevo, idMision });
+      if (!respuesta.comprasMision) { toast('Google todavía no confirmó los gastos. Intentá de nuevo.', true); return; }
+      render();
+      toast('Gastos de misión guardados.');
+    } catch (_) {}
   };
 }
 
 /* --------------------- MISIÓN: LIQUIDACIÓN --------------------- */
 window.asignarDeuda = async (pincel, monto) => {
-  const prevDeuda = snapshot(STATE.deudaAsignada), prevPostFeria = snapshot(STATE.postFeriaPagos);
-  try { await api('SYNC'); } catch(e){}
-  STATE.deudaAsignada[pincel] = monto;
-  if(STATE.postFeriaPagos[pincel]){ STATE.postFeriaPagos[pincel].pagado = false; }
-  toast(`Asignando deuda a ${pincel}…`); render();
-  apiBackground('SET_SYS', { key: 'deuda_asignada', value: STATE.deudaAsignada }, ()=>{ STATE.deudaAsignada = prevDeuda; });
-  if(STATE.postFeriaPagos[pincel]){ apiBackground('SET_SYS', { key: 'postferia_pagos', value: STATE.postFeriaPagos }, ()=>{ STATE.postFeriaPagos = prevPostFeria; }); }
+  try {
+    const respuesta = await api('SET_DEUDA_ASIGNADA', { pincel, monto, idMision: idMisionActual(STATE.historial) });
+    if (Number(respuesta.deudaAsignada?.[pincel]) !== monto) {
+      toast('Google todavía no confirmó la deuda asignada. Intentá de nuevo.', true); return;
+    }
+    render();
+    toast(`Deuda asignada a ${pincel}.`);
+  } catch (error) {
+    if (error.code === 'DEUDA_PAGADA') {
+      try { await api('SYNC'); render(); } catch (_) {}
+    }
+  }
 };
 
 function calcularLiquidacion(nombre){
@@ -645,69 +683,38 @@ function renderEcoLiquidacion(main){
 }
 
 /* --------------------- FERIA: RESULTADOS Y REINICIO --------------------- */
-window.reiniciarMision = async () => {
-  const confirm1 = confirm("⚠️ ATENCIÓN: Estás por guardar el historial y borrar TODAS las ventas, horas y gastos para iniciar una nueva feria. ¿Estás seguro?");
-  if(!confirm1) return;
+let reinicioPendiente = null;
+let reinicioEnCurso = false;
 
-  const nombreMision = prompt("Ponele un nombre a esta feria/misión para guardarla en el Historial (ej: 'Feria Julio 2026'):");
-  if(!nombreMision || !nombreMision.trim()){ toast("Reinicio cancelado: hace falta un nombre para archivarla.", true); return; }
+async function reiniciarMision() {
+  if (reinicioEnCurso) return;
+  if (!reinicioPendiente) {
+    if (!confirm('¿Querés archivar la misión y empezar una nueva? Se vaciarán los datos de la misión actual.')) return;
+    const nombre = prompt('Nombre de la feria o misión para el historial:')?.trim();
+    if (!nombre) { toast('Ingresá un nombre para archivar la misión.', true); return; }
+    if (prompt('Escribí BORRAR para confirmar el reinicio:') !== 'BORRAR') {
+      toast('Reinicio cancelado.');
+      return;
+    }
+    reinicioPendiente = { nombre, idMision: idMisionActual(STATE.historial), idOperacion: nuevoIdOperacion() };
+  }
 
-  const confirm2 = prompt("Escribí la palabra BORRAR (en mayúsculas) para confirmar:");
-  if(confirm2 !== "BORRAR") { toast("Reinicio cancelado.", true); return; }
-  
-  const c = STATE.config;
-  const finanzas = Calculos.resumenFinanciero(STATE.ventas, STATE.ventasMisas, STATE.receta, c);
-  const docPinceles = STATE.ventas.reduce((a,v) => a + (Number(v.docenas)||0), 0);
-  const medPinceles = STATE.ventas.reduce((a,v) => a + (Number(v.medias)||0), 0);
-  const docMisas = Number(STATE.ventasMisas.docenas)||0;
-  const medMisas = Number(STATE.ventasMisas.medias)||0;
-  
-  const cm = STATE.comprasMision || {};
-  const totalComprasMision = Object.values(cm).reduce((a,b)=>a+(Number(b)||0), 0);
-  const confStr = `Mínimo: ${fmt$(c.pagoMinimo)} • Hs Misión: ${c.horasObjetivo} hs • Valor 1hr: ${fmt$(c.valorHora)} • Docena: ${fmt$(c.valorDocena)} • 1/2 Doc: ${fmt$(c.valorMediaDocena)} • Solidario: ${c.porcentajeSolidario}% • Compras Misión: ${fmt$(totalComprasMision)}`;
-
-  const summary = {
-    nombre: nombreMision.trim(),
-    fecha: new Date().toLocaleDateString('es-AR'),
-    docPinceles: docPinceles + (medPinceles*0.5), docMisas: docMisas + (medMisas*0.5),
-    ingresos: finanzas.ingresos, egresos: finanzas.egresos, ganancia: finanzas.ganancia,
-    config: confStr,
-    comprasMision: cm
-  };
-
-  try { await api('RESET_MISSION', summary); toast("Misión archivada y reiniciada 🗂️"); render(); }
-  catch(e) { toast("No se pudo reiniciar la misión, intentá de nuevo.", true); }
-};
-
-function renderEcoResultados(main) {
-  const { ingresosPinceles, ingresosMisas, donaciones: totalDonaciones, ingresos: ingresosTotales, egresos: egresosTotales, ganancia: gananciaNeta } =
-    Calculos.resumenFinanciero(STATE.ventas, STATE.ventasMisas, STATE.receta, STATE.config);
-  const historial = STATE.historial || [];
-  
-  main.innerHTML = `
-    <h2 class="section-title">Resultados de la Feria Actual</h2><div class="banner-min" style="background:${gananciaNeta >= 0 ? 'var(--oliva)' : 'var(--rojo)'}; color:var(--blanco); padding:18px;"><div style="font-size:13px; font-weight:700; text-transform:uppercase; opacity:.9;">Ganancia Neta</div><div class="stat-num" style="font-size:42px; margin:4px 0;">${fmt$(gananciaNeta)}</div><div style="font-size:12px; font-weight:500; opacity:.8;">(Ingresos totales menos Egresos totales)</div></div>
-    <div class="card"><div class="row-between" style="margin-bottom:8px;"><span class="muted">Ventas Pinceles</span><strong>${fmt$(ingresosPinceles)}</strong></div><div class="row-between" style="margin-bottom:8px;"><span class="muted">Ventas en Misas</span><strong>${fmt$(ingresosMisas)}</strong></div><div class="row-between" style="margin-bottom:8px;"><span class="muted">Donaciones (Misas)</span><strong>${fmt$(totalDonaciones)}</strong></div><div style="height:1px; background:#EEE1C4; margin:14px 0;"></div><div class="row-between" style="color:var(--oliva);"><strong>Total Ingresos</strong><strong style="font-size:18px;">${fmt$(ingresosTotales)}</strong></div></div>
-    <div class="card"><div class="row-between" style="color:var(--rojo);"><strong>Total Gastos (Compras Feria)</strong><strong style="font-size:18px;">${fmt$(egresosTotales)}</strong></div></div>
-    
-    <div style="margin-top:40px; padding-top:20px; border-top:2px dashed #E7DCC3;">
-      <h2 class="section-title" style="color:var(--rojo);">⚠️ Zona de Peligro</h2>
-      <p class="muted" style="font-size:11.5px; margin-bottom:10px;">Esto guardará un resumen en el Historial (con el nombre que le pongas) y borrará las ventas y horas de la feria actual.</p>
-      <button class="btn btn-outline" style="border-color:var(--rojo); color:var(--rojo);" onclick="reiniciarMision()">Archivar y Reiniciar Misión</button>
-    </div>
-
-    <h2 class="section-title" style="margin-top:30px;">Historial de Misiones</h2>
-    <div class="card">
-      ${historial.length===0 ? `<div class="empty">Todavía no hay misiones archivadas.</div>` : historial.slice().reverse().map(h=>`
-        <div style="border-bottom:1px solid #F0E4C8; padding-bottom:12px; margin-bottom:12px;">
-          <div class="row-between" style="margin-bottom:2px;"><strong style="color:var(--rojo); font-size:15.5px;">${h.nombre ? escapeHTML(h.nombre) : ('Feria del '+escapeHTML(h.fecha))}</strong><span class="badge ${h.ganancia >= 0 ? 'badge-ok' : 'badge-pend'}" style="font-size:11px;">Neta: ${fmt$(Number(h.ganancia))}</span></div>
-          <div class="muted" style="margin-bottom:8px;">${h.nombre ? escapeHTML(h.fecha) : ''}</div>
-          <div class="row-between" style="font-size:12px; margin-bottom:4px;"><span class="muted">Ingresos Totales:</span><strong>${fmt$(Number(h.ingresos))}</strong></div>
-          <div class="row-between" style="font-size:12px; margin-bottom:4px;"><span class="muted">Egresos Totales:</span><strong>${fmt$(Number(h.egresos))}</strong></div>
-          <div class="row-between" style="font-size:12px; margin-bottom:4px;"><span class="muted">Ventas Pinceles:</span><strong>${Number(h.docPinceles)||0} doc.</strong></div>
-          <div class="row-between" style="font-size:12px; margin-bottom:8px;"><span class="muted">Ventas Misas:</span><strong>${Number(h.docMisas)||0} doc.</strong></div>
-          <div style="font-size:11px; background:var(--crema-2); padding:8px; border-radius:8px; color:var(--tinta); opacity:0.9; line-height:1.4;"><strong>Parámetros usados:</strong><br>${escapeHTML(h.config)}</div>
-        </div>
-      `).join("")}
-    </div>
-  `;
+  reinicioEnCurso = true;
+  try {
+    const respuesta = await api('RESET_MISSION', reinicioPendiente);
+    if (!respuesta.historial?.some(mision => mision.idOperacion === reinicioPendiente.idOperacion)) {
+      toast('Google todavía no confirmó el reinicio. Podés reintentar.', true);
+      return;
+    }
+    reinicioPendiente = null;
+    toast('Misión archivada y reiniciada.');
+  } catch (error) {
+    if (error.code === 'MISION_REINICIADA') {
+      reinicioPendiente = null;
+      try { await api('SYNC'); } catch (_) {}
+    }
+  } finally {
+    reinicioEnCurso = false;
+    render();
+  }
 }

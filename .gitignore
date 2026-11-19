@@ -1,0 +1,5 @@
+/apps-script/
+
+# Pruebas que dependen de la copia local de Apps Script.
+/tests/operaciones.test.cjs
+/tests/planilla.test.cjs

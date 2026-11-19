@@ -1,7 +1,25 @@
 function renderBottomNavPincel(){
   const items = [ {id:"estado", label:"Mi estado", icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-6 3 3 5-7"/></svg>`}, {id:"ventas", label:"Ventas", icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2l1.5 4h9L18 2"/><path d="M3.5 6h17l-1.6 12.5A2 2 0 0117 20H7a2 2 0 01-1.9-1.5L3.5 6z"/><path d="M9 10a3 3 0 006 0"/></svg>`}, {id:"asistencia", label:"Asistencia", icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>`}, {id:"minimo", label:"Mínimo", icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>`} ];
   document.getElementById('bottomNav').innerHTML = items.map(it=>`<button class="nav-btn ${STATE.tab===it.id?'active':''}" data-tab="${it.id}">${it.icon}<span>${it.label}</span></button>`).join("");
-  document.querySelectorAll('.nav-btn').forEach(b=>{ b.onclick = ()=>{ STATE.tab = b.dataset.tab; render(); }; });
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.onclick = () => irATabPincel(b.dataset.tab);
+  });
+}
+
+function irATabPincel(tab, idVenta) {
+  STATE.tab = tab;
+  render();
+  if (tab === 'ventas') {
+    if (idVenta !== undefined) enfocarFilaVenta(idVenta);
+    void actualizarVentasAlVolver();
+  }
+}
+
+function enfocarFilaVenta(id) {
+  const fila = [...document.querySelectorAll('[data-venta-fila]')].find(el => el.dataset.ventaFila === id);
+  if (!fila) return;
+  fila.scrollIntoView({ block: 'center' });
+  fila.focus({ preventScroll: true });
 }
 
 function renderPincelApp(){
@@ -9,67 +27,153 @@ function renderPincelApp(){
   if(STATE.tab==="estado") return renderTabEstado(main); if(STATE.tab==="ventas") return renderTabVentas(main); if(STATE.tab==="asistencia") return renderTabAsistencia(main); if(STATE.tab==="minimo") return renderTabMinimo(main);
 }
 
+function progresoDocenasHTML(id, etiqueta, estado, cantidad, total) {
+  const porcentaje = total > 0 ? Math.min(100, Math.max(0, Math.floor(cantidad * 100 / total))) : 0;
+  return `<div class="estado-progreso">
+    <label for="${id}">${etiqueta}</label>
+    <progress id="${id}" aria-valuetext="${porcentaje}% ${estado}" value="${cantidad}" max="${total || 1}"></progress>
+    <span aria-hidden="true">${porcentaje}%</span>
+  </div>`;
+}
+
 function renderTabEstado(main){
-  const docenas = totalDocenasDe(STATE.miNombre), horas = totalHorasDe(STATE.miNombre), min = STATE.minimoPagos[STATE.miNombre];
-  main.innerHTML = `<h2 class="section-title">Mi estado en la feria</h2><div class="stat-grid"><div class="stat-box"><div class="stat-num">${docenas}</div><div class="stat-label">Docenas vendidas</div></div><div class="stat-box gold"><div class="stat-num">${horas.toFixed(1)}</div><div class="stat-label">Horas trabajadas</div></div></div><div class="card" style="margin-top:16px; text-align:center;"><div class="li-sub" style="margin-bottom:6px;">Aporte al mínimo de misión</div><span class="badge ${min && min.pagado ? 'badge-ok':'badge-pend'}">${min && min.pagado ? 'Mínimo abonado' : 'Mínimo pendiente'}</span></div><p class="muted" style="text-align:center; margin-top:14px;">¡Seguí así, Pincel! Cada docena y cada hora suman un montón para la misión 🎨🥟</p>`;
-}
-
-function guardarCambioVentaAuto(venta, prevVentas, msg) {
-  render();
-  if (msg) toast(msg);
-  apiBackground('EDIT_VENTA', venta, () => {
-    STATE.ventas = prevVentas;
-    render();
-  });
-}
-
-function abrirModalMetodoPagoRapido(venta, onConfirm, onCancel) {
-  const root = document.getElementById('modalRoot');
-  const receptores = (typeof RECEPTORES !== 'undefined' && Array.isArray(RECEPTORES)) ? RECEPTORES : [];
-  root.innerHTML = `
-    <div class="overlay" id="ovPagoRapido">
-      <div class="sheet">
-        <span class="close-x" id="closePagoRapido">✕</span>
-        <h3 style="margin-bottom:4px;">Confirmar pago</h3>
-        <p class="muted" style="margin-top:0; font-size:12px;">${escapeHTML(venta.cliente)} · ¿Cómo le pagaste a Economía?</p>
-        <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
-          <button class="btn btn-primary" id="btnRapidoTransf">💳 Transferencia</button>
-          <button class="btn btn-outline" id="btnRapidoEfec">💵 Efectivo</button>
-        </div>
-        <div id="boxReceptoresRapido" style="display:none; margin-top:14px; padding-top:12px; border-top:1px solid #EEE1C4;">
-          <p class="muted" style="font-size:12px; margin:0 0 8px;">¿A quién le entregaste el efectivo?</p>
-          <div style="display:flex; flex-direction:column; gap:8px;">
-            ${receptores.map(r => `<button class="btn btn-gold btn-sm btn-rec-rapido" data-rec="${escapeHTML(r)}">${escapeHTML(r)}</button>`).join("")}
-          </div>
-        </div>
-      </div>
+  const ventas = misVentas(STATE.miNombre);
+  const pendientes = ventas.filter(venta => venta.estado !== 'Pagado').reverse();
+  const docenas = ventas.reduce((total, venta) => total + docenasEquiv(venta), 0);
+  const docenasPagadas = ventas.filter(venta => venta.estado === 'Pagado').reduce((total, venta) => total + docenasEquiv(venta), 0);
+  const docenasRetiradas = ventas.filter(venta => venta.retirado).reduce((total, venta) => total + docenasEquiv(venta), 0);
+  const horas = totalHorasDe(STATE.miNombre), min = STATE.minimoPagos[STATE.miNombre];
+  const estadoMinimo = min?.pagado ? 'Mínimo abonado' : 'Mínimo pendiente';
+  main.innerHTML = `
+    <h2 class="section-title">Mi estado en la feria</h2>
+    <div class="stat-grid">
+      <button type="button" class="stat-box acceso-estado" data-destino="ventas" aria-label="${docenas} docenas vendidas. Ir a Ventas">
+        <span class="stat-num">${docenas}</span>
+        <span class="stat-label">Docenas vendidas</span>
+      </button>
+      <button type="button" class="stat-box gold acceso-estado" data-destino="asistencia" aria-label="${horas.toFixed(1)} horas trabajadas. Ir a Asistencia">
+        <span class="stat-num">${horas.toFixed(1)}</span>
+        <span class="stat-label">Horas trabajadas</span>
+      </button>
     </div>
-  `;
+    <button type="button" class="card acceso-estado acceso-minimo" data-destino="minimo" aria-label="${estadoMinimo}. Ir a Mínimo">
+      <span class="li-sub">Aporte al mínimo de misión</span>
+      <span class="badge ${min?.pagado ? 'badge-ok' : 'badge-pend'}">${estadoMinimo}</span>
+    </button>
+    ${progresoDocenasHTML('progresoVentasPagadas', 'Docenas vendidas', 'pagadas', docenasPagadas, docenas)}
+    ${progresoDocenasHTML('progresoVentasRetiradas', 'Docenas retiradas', 'retiradas', docenasRetiradas, docenas)}
+    <section class="card estado-pagos" aria-labelledby="tituloEstadoPagos">
+      <h2 id="tituloEstadoPagos">Ventas sin pagar</h2>
+      ${pendientes.length ? `
+      <div class="estado-ventas-columnas">
+        <span>Cliente</span><span>Cantidad</span><span>Monto adeudado</span>
+      </div>
+      <ul class="estado-ventas-impagas">
+        ${pendientes.map(venta => `<li>
+          <button type="button" class="estado-venta-impaga" data-venta-pendiente="${escapeHTML(venta.id)}">
+            <span>${escapeHTML(venta.cliente)}</span>
+            <span>${docenasEquiv(venta).toLocaleString('es-AR')} doc.</span>
+            <strong>${fmt$(Calculos.importeVenta(venta, STATE.config))}</strong>
+          </button>
+        </li>`).join('')}
+      </ul>` : `<p class="muted">${ventas.length ? 'Tus ventas están al día.' : 'Todavía no registraste ventas.'}</p>`}
+    </section>
+    <p class="muted" style="text-align:center; margin-top:14px;">¡Seguí así, Pincel! Cada docena y cada hora suman un montón para la misión 🎨🥟</p>`;
 
-  const cerrar = () => { root.innerHTML = ""; if (onCancel) onCancel(); };
-  document.getElementById('closePagoRapido').onclick = cerrar;
-  document.getElementById('ovPagoRapido').onclick = (e) => { if (e.target.id === 'ovPagoRapido') cerrar(); };
-
-  document.getElementById('btnRapidoTransf').onclick = () => {
-    root.innerHTML = "";
-    onConfirm("Transferencia", "");
-  };
-  document.getElementById('btnRapidoEfec').onclick = () => {
-    document.getElementById('boxReceptoresRapido').style.display = 'block';
-  };
-  document.querySelectorAll('.btn-rec-rapido').forEach(b => {
-    b.onclick = () => {
-      root.innerHTML = "";
-      onConfirm("Efectivo", b.dataset.rec);
-    };
+  main.querySelectorAll('.acceso-estado').forEach(boton => {
+    boton.onclick = () => irATabPincel(boton.dataset.destino);
   });
+  main.querySelectorAll('[data-venta-pendiente]').forEach(boton => {
+    boton.onclick = () => irATabPincel('ventas', boton.dataset.ventaPendiente);
+  });
+}
+
+function actualizarConfirmacionVentas(main) {
+  actualizarAvisoCambiosVentas();
+  const acciones = main.querySelector('#confirmarVentasAcciones');
+  if (!acciones) return;
+  let cantidad = 0;
+  for (const cambio of cambiosVentas.values()) {
+    cantidad += Number('estado' in cambio) + Number('retirado' in cambio);
+  }
+  acciones.hidden = cantidad === 0;
+  acciones.querySelector('button').textContent = `Confirmar ${cantidad} ${cantidad === 1 ? 'cambio' : 'cambios'}`;
+}
+
+function confirmarCambiosVentas(ventasPorId) {
+  const cambios = [...cambiosVentas].map(([id, cambio]) => ({ id, ...cambio }));
+  for (const cambio of cambios) {
+    if (cambio.estado !== 'Pagado') continue;
+    const cliente = ventasPorId.get(cambio.id)?.cliente;
+    if (!cambio.metodoPago) {
+      toast(`Elegí el medio de pago de ${cliente}.`, true);
+      return;
+    }
+    if (cambio.metodoPago === 'Efectivo' && !cambio.recibidoPor) {
+      toast(`Elegí quién recibió el efectivo de ${cliente}.`, true);
+      return;
+    }
+  }
+  return guardarCambiosVentas(cambios);
+}
+
+function mostrarMetodoPagoVenta(campo, id) {
+  const cambio = cambiosVentas.get(id);
+  campo.hidden = cambio?.estado !== 'Pagado';
+  campo.innerHTML = campo.hidden ? '' : metodoPagoHTML(campo.id, cambio.metodoPago, cambio.recibidoPor);
+  if (!campo.hidden) {
+    wireMetodoPago(campo.id, (metodoPago, recibidoPor) => {
+      Object.assign(cambio, { metodoPago, recibidoPor });
+    });
+  }
+}
+
+async function guardarCambiosVentas(cambios) {
+  const boton = document.getElementById('btnConfirmarCambiosVentas');
+  if (!boton || boton.disabled || !cambios.length) return;
+  boton.disabled = true;
+  try {
+    const respuesta = await api('BULK_UPDATE_VENTAS', {
+      pincel: STATE.miNombre, idMision: idMisionActual(STATE.historial), cambios
+    });
+    if (!Array.isArray(respuesta.ventas)) await api('SYNC');
+    const ventas = new Map(misVentas(STATE.miNombre).map(venta => [String(venta.id), venta]));
+    if (!cambios.every(cambio => {
+      const venta = ventas.get(cambio.id);
+      return venta && ['estado', 'retirado', 'metodoPago', 'recibidoPor'].every(campo =>
+        !(campo in cambio) || (venta[campo] ?? '') === cambio[campo]);
+    })) {
+      toast('Google todavía no confirmó todos los cambios. Podés reintentar.', true);
+      return;
+    }
+    cambios.forEach(({ id }) => cambiosVentas.delete(id));
+    actualizarAvisoCambiosVentas();
+    render();
+    toast('Cambios guardados.');
+  } catch (error) {
+    if (['MISION_REINICIADA', 'VENTA_NO_DISPONIBLE'].includes(error.code)) {
+      try { await api('SYNC'); render(); } catch (_) {}
+    }
+  } finally {
+    boton.disabled = false;
+  }
 }
 
 function renderTabVentas(main){
   const mias = misVentas(STATE.miNombre).slice().reverse(), impagas = mias.filter(v=>v.estado==='Falta Pagar');
   const adeudaDocs = impagas.reduce((a,v)=>a + (Number(v.docenas)||0), 0), adeudaMeds = impagas.reduce((a,v)=>a + (Number(v.medias)||0), 0);
   const montoAdeudado = Calculos.totalPendiente(mias, STATE.config);
-  const cerradas = !!STATE.config.ventasCerradas;
+  const cerradas = STATE.config.ventasCerradas;
+  const iconoEditar = ` <svg class="venta-icono" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+  </svg>`;
+  const iconoEliminar = `<svg class="venta-icono" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 7h16m-10-3h4m-8 3 1 13h10l1-13m-8 3v6m4-6v6"/>
+  </svg>`;
+  const ventasPorId = new Map(mias.map(venta => [String(venta.id), venta]));
+  for (const id of cambiosVentas.keys()) {
+    if (!ventasPorId.has(id)) cambiosVentas.delete(id);
+  }
   
   main.innerHTML = `
     <h2 class="section-title">Mis ventas</h2>
@@ -78,94 +182,116 @@ function renderTabVentas(main){
     <p class="muted" style="text-align:center; margin-top:12px; font-size:11.5px;">Podés ir transfiriendo el dinero de tus ventas a <b>${escapeHTML(STATE.config.alias ?? DEFAULT_CONFIG.alias)}</b> (Paulina Rocío García) o pagar todo junto al final.</p>
     
     <h2 class="section-title" style="margin-top:20px;">Mis clientes</h2>
-    <p class="muted" style="font-size:11px; margin:-5px 0 10px 4px;">${cerradas ? 'Marcá las casillas de Pagado o Retirado (se guarda automáticamente).' : 'Tocá el nombre para editar cantidades, o marcá las casillas (se guarda automáticamente).'}</p>
+    <p class="muted">${cerradas ? '' : 'Tocá el nombre de un cliente para editar su pedido. '}Marcá pagos y retiros y confirmá los cambios para guardarlos.</p>
     
-    <div class="card">
+    <div class="card${cerradas ? '' : ' ventas-con-acciones'}">
       ${mias.length===0 ? `<div class="empty">Todavía no registraste ninguna venta.</div>` : `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:0 4px 8px; border-bottom:2px solid var(--crema-2); font-size:10.5px; font-weight:800; text-transform:uppercase; opacity:.6;">
-          <div style="flex:1;">Cliente / Pedido</div>
-          <div style="width:58px; text-align:center;">Pagado</div>
-          <div style="width:58px; text-align:center;">Retirado</div>
+        <div class="ventas-fila ventas-encabezado">
+          <div>Cliente / Pedido</div>
+          <div>Pagado</div>
+          <div>Retirado</div>
+          ${cerradas ? '' : '<div>Eliminar</div>'}
         </div>
-        ${mias.map(v=>`
-          <div class="list-item" style="padding:10px 4px;">
-            <div class="${cerradas ? '' : 'venta-editable'}" data-venta-id="${escapeHTML(v.id)}" style="flex:1; ${cerradas ? '' : 'cursor:pointer;'} padding-right:8px;">
-              <div class="li-name" style="display:flex; align-items:center; gap:6px;">
-                ${escapeHTML(v.cliente)}
-                ${cerradas ? '' : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--tinta)" stroke-width="2" opacity="0.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`}
-              </div>
-              <div class="li-sub">${Number(v.docenas)? Number(v.docenas)+' doc. ':''}${Number(v.medias)? Number(v.medias)+' 1/2 doc. ':''}· ${escapeHTML(v.tipo)}${v.estado==='Pagado' && v.metodoPago ? ' · '+escapeHTML(v.metodoPago)+(v.metodoPago==='Efectivo' && v.recibidoPor ? ' ('+escapeHTML(v.recibidoPor)+')' : '') : ''}</div>
+        ${mias.map((v, indice) => {
+          const borrador = cambiosVentas.get(String(v.id)) || {};
+          const id = escapeHTML(v.id);
+          const nombre = escapeHTML(v.cliente);
+          const tipo = escapeHTML(v.tipo);
+          const idPago = 'pagoPedido' + indice;
+          const detallePedido = `
+            <span class="li-name">${nombre}${cerradas ? '' : iconoEditar}</span>
+            <span class="li-sub">${Number(v.docenas) ? Number(v.docenas) + ' doc. ' : ''}${Number(v.medias) ? Number(v.medias) + ' ½ doc. ' : ''}· ${tipo}${v.estado === 'Pagado' && v.metodoPago ? ' · ' + escapeHTML(v.metodoPago) + (v.metodoPago === 'Efectivo' && v.recibidoPor ? ' (' + escapeHTML(v.recibidoPor) + ')' : '') : ''}</span>`;
+          return `<div class="list-item ventas-fila" data-venta-fila="${id}" tabindex="-1">
+            <div class="venta-pedido">
+              ${cerradas ? detallePedido : `<button type="button" class="venta-editable" data-venta-id="${id}" aria-label="Editar pedido de ${nombre}, ${tipo}">${detallePedido}</button>`}
             </div>
-            <div style="width:58px; display:flex; justify-content:center;">
-              <input type="checkbox" class="chk-venta-pagado" data-id="${escapeHTML(v.id)}" ${v.estado==='Pagado'?'checked':''} style="width:20px; height:20px; margin:0; accent-color:var(--oliva); cursor:pointer;">
-            </div>
-            <div style="width:58px; display:flex; justify-content:center;">
-              <input type="checkbox" class="chk-venta-retirado" data-id="${escapeHTML(v.id)}" ${v.retirado?'checked':''} style="width:20px; height:20px; margin:0; accent-color:var(--rojo); cursor:pointer;">
-            </div>
+            <label class="venta-casilla">
+              <input type="checkbox" aria-label="Pagado: ${nombre}, ${tipo}" aria-controls="${idPago}" class="chk-venta-pagado" data-campo="estado" data-id="${id}" ${(borrador.estado ?? v.estado) === 'Pagado' ? 'checked' : ''}>
+            </label>
+            <label class="venta-casilla">
+              <input type="checkbox" aria-label="Retirado: ${nombre}, ${tipo}" class="chk-venta-retirado" data-campo="retirado" data-id="${id}" ${(borrador.retirado ?? v.retirado) ? 'checked' : ''}>
+            </label>
+            ${cerradas ? '' : `<button type="button" class="venta-eliminar" data-borrar-venta="${id}" aria-label="Eliminar venta de ${nombre}, ${tipo}">
+              ${iconoEliminar}
+            </button>`}
+            <div class="pago-venta" id="${idPago}" role="group" aria-label="Pago de ${nombre}, ${tipo}" hidden></div>
           </div>
-        `).join("")}
+        `; }).join("")}
       `}
     </div>
+    ${mias.length ? `<div class="ventas-confirmar" id="confirmarVentasAcciones" ${cambiosVentas.size ? '' : 'hidden'}>
+      <button class="btn btn-primary" id="btnConfirmarCambiosVentas">Confirmar cambios</button>
+    </div>` : ''}
   `;
 
   const btnNueva = document.getElementById('btnNuevaVenta');
   if(btnNueva) btnNueva.onclick = () => openModalVenta();
   if(!cerradas){
-    document.querySelectorAll('.venta-editable').forEach(el => {
-      el.onclick = () => openModalVenta(el.dataset.ventaId);
+    main.querySelectorAll('.venta-editable').forEach(boton => {
+      boton.onclick = () => openModalVenta(boton.dataset.ventaId, { origen: boton });
+    });
+    main.querySelectorAll('.venta-eliminar').forEach(boton => {
+      boton.onclick = () => openModalVenta(boton.dataset.borrarVenta, { abrirConfirmacion: true, origen: boton });
     });
   }
 
-  document.querySelectorAll('.chk-venta-retirado').forEach(chk => {
+  const confirmar = document.getElementById('btnConfirmarCambiosVentas');
+  if (confirmar) confirmar.onclick = () => confirmarCambiosVentas(ventasPorId);
+  actualizarConfirmacionVentas(main);
+  main.querySelectorAll('.venta-casilla input').forEach(chk => {
+    const { id, campo } = chk.dataset;
+    const editorPago = campo === 'estado' ? document.getElementById(chk.getAttribute('aria-controls')) : null;
+    if (editorPago) mostrarMetodoPagoVenta(editorPago, id);
     chk.onchange = () => {
-      const venta = STATE.ventas.find(x => String(x.id) === String(chk.dataset.id));
-      if (!venta) return;
-      const prevVentas = snapshot(STATE.ventas);
-      venta.retirado = chk.checked;
-      guardarCambioVentaAuto(venta, prevVentas, chk.checked ? 'Marcado como retirado ✅' : 'Retiro desmarcado');
-    };
-  });
-
-  document.querySelectorAll('.chk-venta-pagado').forEach(chk => {
-    chk.onchange = () => {
-      const venta = STATE.ventas.find(x => String(x.id) === String(chk.dataset.id));
-      if (!venta) return;
-      if (chk.checked) {
-        abrirModalMetodoPagoRapido(
-          venta,
-          (metodo, receptor) => {
-            const prevVentas = snapshot(STATE.ventas);
-            venta.estado = 'Pagado';
-            venta.metodoPago = metodo;
-            venta.recibidoPor = receptor || null;
-            guardarCambioVentaAuto(venta, prevVentas, 'Pago guardado ✅');
-          },
-          () => { chk.checked = false; }
-        );
-      } else {
-        const prevVentas = snapshot(STATE.ventas);
-        venta.estado = 'Falta Pagar';
-        venta.metodoPago = null;
-        venta.recibidoPor = null;
-        guardarCambioVentaAuto(venta, prevVentas, 'Marcado como falta pagar');
+      const venta = ventasPorId.get(id);
+      const cambios = cambiosVentas.get(id) || {};
+      const valor = campo === 'retirado' ? chk.checked : chk.checked ? 'Pagado' : 'Falta Pagar';
+      const original = campo === 'estado' && venta.estado !== 'Pagado' ? 'Falta Pagar' : venta[campo];
+      if (campo === 'estado') {
+        delete cambios.metodoPago;
+        delete cambios.recibidoPor;
       }
+      if (valor === original) delete cambios[campo];
+      else cambios[campo] = valor;
+      if (Object.keys(cambios).length) cambiosVentas.set(id, cambios);
+      else cambiosVentas.delete(id);
+      if (editorPago) mostrarMetodoPagoVenta(editorPago, id);
+      actualizarConfirmacionVentas(main);
     };
   });
 }
-window.openModalVenta = (idEdit = null) => {
-  const root = document.getElementById('modalRoot'); 
-  let reg = idEdit ? STATE.ventas.find(v=>v.id===idEdit) : null;
+window.openModalVenta = (idEdit = null, { abrirConfirmacion = false, origen = document.activeElement } = {}) => {
+  if (STATE.config.ventasCerradas) { toast('Las ventas están cerradas.', true); return; }
+  const root = document.getElementById('modalRoot');
+  const pincel = STATE.miNombre;
+  const idMision = idMisionActual(STATE.historial);
+  const reg = idEdit ? misVentas(pincel).find(v => String(v.id) === String(idEdit)) : null;
+  if (idEdit && !reg) { toast('El pedido ya no está disponible.', true); return; }
+  const idVenta = nuevoIdOperacion();
+  const fecha = new Date().toISOString();
+  let ultimoIntento;
+  let guardando = false;
   
   // Si estamos editando, solo cargamos los números de ese registro específico. Si no, arranca todo en 0.
-  let docC = (reg && reg.tipo==='Crudas') ? (reg.docenas||0) : 0;
-  let medC = (reg && reg.tipo==='Crudas') ? (reg.medias||0) : 0;
-  let docO = (reg && reg.tipo==='Cocidas') ? (reg.docenas||0) : 0;
-  let medO = (reg && reg.tipo==='Cocidas') ? (reg.medias||0) : 0;
+  const docenas = Number(reg?.docenas) || 0;
+  const medias = Number(reg?.medias) || 0;
+  let docC = reg?.tipo === 'Crudas' ? docenas : 0;
+  let medC = reg?.tipo === 'Crudas' ? medias : 0;
+  let docO = reg?.tipo === 'Cocidas' ? docenas : 0;
+  let medO = reg?.tipo === 'Cocidas' ? medias : 0;
+  const cantidadOriginal = [
+    docenas > 0 && `${docenas.toLocaleString('es-AR')} ${docenas === 1 ? 'docena' : 'docenas'}`,
+    medias > 0 && `${medias.toLocaleString('es-AR')} ${medias === 1 ? 'media docena' : 'medias docenas'}`
+  ].filter(Boolean).join(' y ');
   
-  let estado = reg ? reg.estado : "Falta Pagar", cName = reg ? reg.cliente : "";
+  let estado = reg?.estado === 'Pagado' ? 'Pagado' : 'Falta Pagar';
+  const cName = reg?.cliente ?? '';
   let metodoInit = reg ? (reg.metodoPago||null) : null, quienInit = reg ? (reg.recibidoPor||null) : null;
   
-  root.innerHTML = `<div class="overlay" id="ov"><div class="sheet"><span class="close-x" id="closeX">✕</span><h3>${reg ? 'Editar Venta' : 'Registrar Venta'}</h3>
+  root.innerHTML = `<div class="overlay" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="tituloVenta">
+    <div id="edicionVenta">
+    <button type="button" class="close-x" id="closeX" aria-label="Cerrar">✕</button>
+    <h3 id="tituloVenta">${reg ? 'Editar Venta' : 'Registrar Venta'}</h3>
     <label>Nombre o apodo del cliente</label>
     <input id="vCliente" value="${escapeHTML(cName)}" placeholder="Ej: Marta (vecina)">
     
@@ -199,6 +325,18 @@ window.openModalVenta = (idEdit = null) => {
     <p class="muted" style="font-size:11px; margin-top:-6px; margin-bottom:12px; line-height:1.3;">"Pagado" significa que vos ya le mandaste esa plata a Economía. No importa si tu cliente todavía no te pagó a vos.</p>
     <button class="btn btn-primary" id="btnGuardarVenta" style="margin-bottom:8px;">${reg ? 'Guardar Cambios' : 'Guardar Venta'}</button>
     ${reg ? `<button class="btn btn-outline" id="btnBorrarVenta" style="color:#B4551D; border-color:#B4551D;">Eliminar Venta</button>` : ''}
+    </div>
+    ${reg ? `<div id="confirmacionBorrarVenta" hidden>
+      <h3 id="tituloBorrarVenta">¿Eliminar esta venta?</h3>
+      <div class="venta-confirmar-resumen">
+        <strong>${escapeHTML(cName)}</strong>
+        <span>${cantidadOriginal ? cantidadOriginal + ' · ' : ''}${escapeHTML(reg.tipo)}</span>
+      </div>
+      <div class="venta-confirmar-acciones">
+        <button type="button" class="btn btn-outline" id="btnVolverVenta">Volver</button>
+        <button type="button" class="btn btn-primary" id="btnConfirmarBorrarVenta">Eliminar venta</button>
+      </div>
+    </div>` : ''}
   </div></div>`;
   
   // Botones +/- Crudas
@@ -222,7 +360,71 @@ window.openModalVenta = (idEdit = null) => {
   refreshPagoExtra();
   document.querySelectorAll('#estadoRow .toggle-opt').forEach(el=>el.onclick=()=>{ document.querySelectorAll('#estadoRow .toggle-opt').forEach(x=>x.classList.remove('active')); el.classList.add('active'); estado = el.dataset.v; refreshPagoExtra(); });
 
-  document.getElementById('closeX').onclick = ()=> root.innerHTML=""; document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') root.innerHTML=""; };
+  const overlay = document.getElementById('ov');
+  const sheet = overlay.firstElementChild;
+  const edicion = document.getElementById('edicionVenta');
+  const confirmacion = document.getElementById('confirmacionBorrarVenta');
+  const confirmando = () => confirmacion && !confirmacion.hidden;
+  const btnBorrar = document.getElementById('btnBorrarVenta');
+  const btnVolver = document.getElementById('btnVolverVenta');
+  const btnConfirmar = document.getElementById('btnConfirmarBorrarVenta');
+  const mostrarConfirmacion = (mostrar) => {
+    edicion.hidden = mostrar;
+    confirmacion.hidden = !mostrar;
+    sheet.classList.toggle('sheet-confirmar-venta', mostrar);
+    sheet.setAttribute('aria-labelledby', mostrar ? 'tituloBorrarVenta' : 'tituloVenta');
+    (mostrar ? btnVolver : btnBorrar).focus();
+  };
+  const cerrar = () => {
+    if (guardando) return;
+    if (confirmando() && !abrirConfirmacion) {
+      mostrarConfirmacion(false);
+      return;
+    }
+    root.innerHTML = '';
+    if (origen?.isConnected) origen.focus({ preventScroll: true });
+  };
+  document.getElementById('closeX').onclick = cerrar;
+  overlay.onclick = event => { if (event.target === event.currentTarget) cerrar(); };
+  overlay.onkeydown = event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cerrar();
+    }
+    if (event.key === 'Tab' && confirmando()) {
+      const ultimo = event.shiftKey ? btnVolver : btnConfirmar;
+      if (event.target === ultimo) {
+        event.preventDefault();
+        (event.shiftKey ? btnConfirmar : btnVolver).focus();
+      }
+    }
+  };
+
+  async function guardarPedido(cambio, mensaje) {
+    if (guardando) return;
+    const firma = JSON.stringify(cambio);
+    if (ultimoIntento?.firma !== firma) ultimoIntento = { firma, id: nuevoIdOperacion() };
+    guardando = true;
+    const controles = [...root.querySelectorAll('input, select, button')].filter(el => !el.disabled);
+    controles.forEach(el => { el.disabled = true; });
+    try {
+      const respuesta = await api('SAVE_VENTAS', { ...cambio, pincel, idMision, idOperacion: ultimoIntento.id });
+      if (!Array.isArray(respuesta.ventas)) { toast('Google todavía no confirmó el pedido. Intentá de nuevo.', true); return; }
+      root.innerHTML = '';
+      render();
+      toast(mensaje);
+    } catch (error) {
+      if (['VENTAS_CERRADAS', 'MISION_REINICIADA', 'VENTA_NO_DISPONIBLE'].includes(error.code)) {
+        if (error.code === 'VENTAS_CERRADAS') STATE.config.ventasCerradas = true;
+        root.innerHTML = '';
+        try { await api('SYNC'); } catch (_) {}
+        render();
+      }
+    } finally {
+      controles.forEach(el => { el.disabled = false; });
+      guardando = false;
+    }
+  }
   
   document.getElementById('btnGuardarVenta').onclick = ()=>{
     const cliente = document.getElementById('vCliente').value.trim(); if(!cliente){ toast("Escribí el nombre del cliente"); return; } 
@@ -232,50 +434,45 @@ window.openModalVenta = (idEdit = null) => {
     
     let metodoFinal = null, quienFinal = null;
     if(estado === 'Pagado'){
-      metodoFinal = pagoWire ? pagoWire.getMetodo() : null; if(!metodoFinal){ toast("Elegí si fue por transferencia o efectivo"); return; }
-      if(metodoFinal === 'Efectivo'){ quienFinal = pagoWire.getQuien(); if(!quienFinal){ toast("Elegí a quién le diste el efectivo"); return; } }
-    }
-    
-    const prevVentas = snapshot(STATE.ventas);
-    let aBorrar = null, aEditar = null, aAgregar = [];
-
-    if(reg){
-      if(reg.tipo === 'Crudas'){
-        if(crudasActivas) aEditar = {...reg, cliente, docenas: docC, medias: medC, estado, metodoPago: metodoFinal, recibidoPor: quienFinal};
-        else aBorrar = reg;
-        if(cocidasActivas) aAgregar.push({...reg, id: Date.now()+"_co", cliente, docenas: docO, medias: medO, tipo: "Cocidas", estado, metodoPago: metodoFinal, recibidoPor: quienFinal});
-      } else {
-        if(cocidasActivas) aEditar = {...reg, cliente, docenas: docO, medias: medO, estado, metodoPago: metodoFinal, recibidoPor: quienFinal};
-        else aBorrar = reg;
-        if(crudasActivas) aAgregar.push({...reg, id: Date.now()+"_cr", cliente, docenas: docC, medias: medC, tipo: "Crudas", estado, metodoPago: metodoFinal, recibidoPor: quienFinal});
+      metodoFinal = pagoWire?.getMetodo() ?? null;
+      const conservaPago = reg?.estado === 'Pagado' && metodoFinal === metodoInit &&
+        (reg.tipo === 'Crudas' ? !cocidasActivas : !crudasActivas);
+      if (!metodoFinal && !conservaPago) { toast('Elegí transferencia o efectivo.'); return; }
+      if (metodoFinal === 'Efectivo') {
+        quienFinal = pagoWire.getQuien() || null;
+        if (!quienFinal && !conservaPago) { toast('Elegí a quién le diste el efectivo.'); return; }
       }
-    } else {
-      const baseId = Date.now()+"_"+Math.random().toString(36).slice(2,7);
-      if(crudasActivas) aAgregar.push({ id: baseId+"_cr", fecha: new Date().toISOString(), pincel: STATE.miNombre, cliente, docenas: docC, medias: medC, tipo: "Crudas", estado, metodoPago: metodoFinal, recibidoPor: quienFinal });
-      if(cocidasActivas) aAgregar.push({ id: baseId+"_co", fecha: new Date().toISOString(), pincel: STATE.miNombre, cliente, docenas: docO, medias: medO, tipo: "Cocidas", estado, metodoPago: metodoFinal, recibidoPor: quienFinal });
     }
 
-    if(aBorrar) STATE.ventas = STATE.ventas.filter(v => v.id !== aBorrar.id);
-    if(aEditar) { const idx = STATE.ventas.findIndex(v => v.id === aEditar.id); if(idx>=0) STATE.ventas[idx] = aEditar; }
-    aAgregar.forEach(nueva => STATE.ventas.push(nueva));
-
-    root.innerHTML=""; toast(reg ? "Cambios cargados · sincronizando…" : "Venta cargada · sincronizando…"); render();
-
-    if(aBorrar) apiBackground('DEL_VENTA', { id: aBorrar.id }, () => STATE.ventas = prevVentas);
-    if(aEditar) apiBackground('EDIT_VENTA', aEditar, () => STATE.ventas = prevVentas);
-    aAgregar.forEach(nueva => apiBackground('ADD_VENTA', nueva, () => STATE.ventas = prevVentas));
+    const pago = { estado, metodoPago: metodoFinal, recibidoPor: quienFinal };
+    const pagoCambiado = !reg || estado !== (reg.estado || 'Falta Pagar') ||
+      metodoFinal !== metodoInit || (quienFinal || null) !== quienInit;
+    const filas = [
+      { tipo: 'Crudas', docenas: docC, medias: medC },
+      { tipo: 'Cocidas', docenas: docO, medias: medO }
+    ].filter(({ docenas, medias }) => docenas > 0 || medias > 0);
+    const filaOriginal = filas.find(fila => fila.tipo === reg?.tipo);
+    const editar = filaOriginal ? {
+      id: reg.id, cliente, ...filaOriginal, ...(pagoCambiado ? pago : {})
+    } : null;
+    const borrar = reg && !filaOriginal ? reg.id : null;
+    const agregar = filas.filter(fila => fila !== filaOriginal).map(fila => ({
+      id: idVenta + '_' + fila.tipo, fecha, cliente, ...fila, ...pago,
+      retirado: Boolean(borrar && reg.retirado)
+    }));
+    return guardarPedido({ editar, borrar, agregar }, reg ? 'Pedido actualizado.' : 'Venta guardada.');
   };
   
-  const btnBorrar = document.getElementById('btnBorrarVenta'); 
-  if(btnBorrar){ 
-    btnBorrar.onclick = ()=>{ 
-      if(confirm("¿Seguro que querés borrar esta venta?")){ 
-        const prevVentas = snapshot(STATE.ventas); 
-        STATE.ventas = STATE.ventas.filter(v=>v.id!==idEdit); 
-        root.innerHTML=""; toast("Eliminando venta…"); render(); 
-        apiBackground('DEL_VENTA', { id: idEdit }, ()=>{ STATE.ventas = prevVentas; }); 
-      } 
-    }; 
+  if (btnBorrar) {
+    btnBorrar.onclick = () => mostrarConfirmacion(true);
+    btnVolver.onclick = cerrar;
+    btnConfirmar.onclick = async () => {
+      btnConfirmar.textContent = 'Eliminando…';
+      await guardarPedido({ borrar: reg.id, agregar: [] }, 'Venta eliminada.');
+      btnConfirmar.textContent = 'Eliminar venta';
+      if (btnConfirmar.isConnected) btnConfirmar.focus();
+    };
+    if (abrirConfirmacion) mostrarConfirmacion(true);
   }
 }
 
@@ -304,7 +501,9 @@ function renderTabAsistencia(main){
   };
 }
 window.openEditAsistencia = (id) => {
-  const root = document.getElementById('modalRoot'); const reg = STATE.asistencia.find(a=>a.id === id); if(!reg) return;
+  const root = document.getElementById('modalRoot');
+  const reg = STATE.asistencia.find(a => String(a.id) === String(id));
+  if (!reg) return;
   root.innerHTML = `<div class="overlay" id="ov"><div class="sheet"><span class="close-x" id="closeX">✕</span><h3>Editar Horario</h3><label>Hora de llegada</label><input type="datetime-local" id="editEntrada" value="${escapeHTML(localISOTime(reg.entrada))}"><label>Hora de salida</label><input type="datetime-local" id="editSalida" value="${escapeHTML(localISOTime(reg.salida))}"><button class="btn btn-primary" id="btnGuardarEdit">Guardar cambios</button></div></div>`;
   document.getElementById('closeX').onclick = ()=> root.innerHTML=""; document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') root.innerHTML=""; };
   document.getElementById('btnGuardarEdit').onclick = ()=>{
@@ -324,23 +523,29 @@ function renderTabMinimo(main){
     ${deuda > 0 ? `<div class="banner-min" style="background:var(--rojo); color:var(--blanco); margin-top:20px;"><div style="font-size:13px; font-weight:700; opacity:.9; text-transform:uppercase;">Deuda post feria</div><div class="stat-num" style="font-size:36px; margin:4px 0;">${fmt$(deuda)}</div>${postFeria && postFeria.pagado ? `<div style="margin-top:12px;"><span class="badge badge-ok" style="font-size:12px; background:var(--blanco); color:var(--rojo);">Ya registraste el pago del saldo post feria ✅</span>${postFeria.metodoPago ? `<div style="margin-top:6px; font-size:12px; opacity:.85;">${escapeHTML(postFeria.metodoPago)}${postFeria.metodoPago==='Efectivo' && postFeria.recibidoPor ? ' a '+escapeHTML(postFeria.recibidoPor) : ''}</div>` : ''}</div>` : `<button class="btn btn-outline btn-sm" id="btnPaguePostFeria" style="margin-top:8px; border-color:var(--blanco); color:var(--blanco); font-weight:800;">Avisar que ya pagué el saldo post feria</button>`}</div>` : ''}
   `;
   const bMin = document.getElementById('btnPagueMinimo'); if(bMin) bMin.onclick = ()=>{
-    openModalMetodoPago('¿Cómo pagaste el mínimo?', async (metodo, quien)=>{
-      const prev = STATE.minimoPagos[STATE.miNombre];
-      // NUEVO: Traemos la base fresca antes de guardar para no pisar el pago de otro Pincel
-      try { await api('SYNC'); } catch(e) {}
-      STATE.minimoPagos[STATE.miNombre] = {pagado:true, fecha:new Date().toISOString(), metodoPago: metodo, recibidoPor: quien};
-      toast("Registrando pago…"); render();
-      apiBackground('SET_SYS', { key: 'minimo_pagos', value: STATE.minimoPagos }, ()=>{ STATE.minimoPagos[STATE.miNombre] = prev; });
-    });
+    openModalMetodoPago('¿Cómo pagaste el mínimo?', (metodo, quien) => guardarPagoPincel('minimo', metodo, quien));
   };
   const bPost = document.getElementById('btnPaguePostFeria'); if(bPost) bPost.onclick = ()=>{
-    openModalMetodoPago('¿Cómo pagaste el saldo post feria?', async (metodo, quien)=>{
-      const prev = STATE.postFeriaPagos[STATE.miNombre];
-      // NUEVO: Traemos la base fresca antes de guardar para no pisar el pago de otro Pincel
-      try { await api('SYNC'); } catch(e) {}
-      STATE.postFeriaPagos[STATE.miNombre] = {pagado:true, fecha:new Date().toISOString(), metodoPago: metodo, recibidoPor: quien};
-      toast("Registrando pago…"); render();
-      apiBackground('SET_SYS', { key: 'postferia_pagos', value: STATE.postFeriaPagos }, ()=>{ STATE.postFeriaPagos[STATE.miNombre] = prev; });
-    });
+    openModalMetodoPago('¿Cómo pagaste el saldo post feria?', (metodo, quien) => guardarPagoPincel('postFeria', metodo, quien, Number(deuda)));
   };
+}
+
+async function guardarPagoPincel(tipo, metodoPago, recibidoPor, monto) {
+  const pincel = STATE.miNombre;
+  try {
+    const respuesta = await api('SET_PINCEL_PAYMENT', {
+      pincel, tipo, metodoPago, recibidoPor, monto, idMision: idMisionActual(STATE.historial)
+    });
+    const campo = tipo === 'minimo' ? 'minimoPagos' : 'postFeriaPagos';
+    if (!verdadero(respuesta[campo]?.[pincel]?.pagado)) {
+      toast('Google todavía no confirmó el pago. Intentá de nuevo.', true);
+      return;
+    }
+    render();
+    toast('Pago guardado.');
+  } catch (error) {
+    if (['DEUDA_CAMBIO', 'MISION_REINICIADA'].includes(error.code)) {
+      try { await api('SYNC'); render(); } catch (_) {}
+    }
+  }
 }

@@ -21,49 +21,94 @@ function renderSelector(){
     <div class="selector-wrap">
       <img src="logo.jpg" alt="Logo Pinceles" class="logo-inicio">
       <h1>¡Hola, Pincel!</h1>
-      <p class="tag">Elegí tu nombre para empezar</p>
-      <input list="lista-pinceles" id="selNombre" placeholder="Buscá tu nombre o escribilo..." autocomplete="off">
-      <datalist id="lista-pinceles">${STATE.pinceles.map(n=>`<option value="${n}">`).join("")}</datalist>
-      <button class="btn btn-primary" id="btnEntrar" style="margin-top:6px;">Iniciar Sesión</button>
-      <p class="muted" style="font-size:11.5px; margin-top:14px;">¿Sos nuevo/a y no estás en la lista? Escribí tu <b>Nombre y Apellido</b> y tocá Iniciar Sesión para sumarte.</p>
+      <form id="formEntrar">
+        <label for="selNombre">Elegí tu nombre para empezar</label>
+        <input list="lista-pinceles" id="selNombre" placeholder="Buscá tu nombre" autocomplete="off" required>
+        <datalist id="lista-pinceles">${STATE.pinceles.map(n => `<option value="${escapeHTML(n)}">`).join("")}</datalist>
+        <button class="btn btn-primary">Iniciar sesión</button>
+      </form>
+      <button class="btn btn-outline" id="btnSoyNuevo">Soy nuevo/a</button>
     </div>
   `;
   
-  document.getElementById('btnEntrar').onclick = async ()=>{
-    const v = document.getElementById('selNombre').value.trim();
-    if(!v){ toast("Escribí o elegí tu nombre"); return; }
-    
-    let match = STATE.pinceles.find(p => p.trim().toLowerCase() === v.toLowerCase());
-    
-    if(!match){
-      // Pone en mayúscula la primera letra de cada palabra (Ej: "mati comello" -> "Mati Comello")
-      const nombreProlijo = v.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-      
-      if(nombreProlijo.split(" ").length < 2){
-        toast("Por favor escribí tu Nombre y Apellido completos", true);
-        return;
-      }
+  document.getElementById('formEntrar').onsubmit = event => {
+    event.preventDefault();
+    const nombre = buscarPincel(document.getElementById('selNombre').value);
+    if (!nombre) { toast('Elegí tu nombre de la lista o tocá Soy nuevo/a.', true); return; }
+    iniciarSesion(nombre);
+  };
+  document.getElementById('btnSoyNuevo').onclick = abrirRegistro;
+}
 
-      const seguro = confirm(`"${nombreProlijo}" no está en la lista.\n\n¿Sos un Pincel nuevo y querés agregarte con este nombre? (Si ya estabas, tocá Cancelar y buscate en la lista desplegable).`);
-      if(!seguro) return;
+function buscarPincel(nombre) {
+  return STATE.pinceles.find(pincel => claveNombre(pincel) === claveNombre(nombre));
+}
 
-      try {
-        await api('ADD_PINCEL', { nombre: nombreProlijo });
-        match = nombreProlijo;
-        toast("¡Bienvenido/a! Ya quedaste en la lista 🎉");
-      } catch(e) {
-        return;
-      }
+function iniciarSesion(nombre) {
+  try { localStorage.setItem('mi_nombre', nombre); } catch (_) {}
+  STATE.miNombre = nombre;
+  STATE.tab = 'estado';
+  render();
+}
+
+function abrirRegistro() {
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `<div class="overlay" id="registroOverlay"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="tituloRegistro">
+    <button class="close-x" id="cerrarRegistro" aria-label="Cerrar">✕</button>
+    <h3 id="tituloRegistro">Sumate a Pinceles</h3>
+    <form id="formRegistro">
+      <label for="nuevoNombre">Nombre y apellido</label>
+      <input id="nuevoNombre" type="text" autocomplete="name" required>
+      <button class="btn btn-primary" id="btnRegistrarPincel">Registrarme</button>
+    </form>
+  </div></div>`;
+  const input = document.getElementById('nuevoNombre');
+  const boton = document.getElementById('btnRegistrarPincel');
+  const cerrar = () => { if (!boton.disabled) root.innerHTML = ''; };
+  document.getElementById('cerrarRegistro').onclick = cerrar;
+  document.getElementById('registroOverlay').onclick = event => { if (event.target === event.currentTarget) cerrar(); };
+  input.focus();
+
+  document.getElementById('formRegistro').onsubmit = async event => {
+    event.preventDefault();
+    const nombre = limpiarNombre(input.value);
+    if (nombre.split(' ').length < 2) { toast('Escribí tu nombre y apellido.', true); return; }
+    boton.disabled = true;
+    try {
+      // El servidor comprueba duplicados al guardar, incluso entre dos dispositivos.
+      const respuesta = await api('ADD_PINCEL', { nombre });
+      if (!Array.isArray(respuesta.pinceles)) await api('SYNC');
+      const registrado = buscarPincel(nombre);
+      if (!registrado) { toast('Google todavía no confirmó el registro. Intentá de nuevo.', true); return; }
+      root.innerHTML = '';
+      iniciarSesion(registrado);
+      toast('¡Ya podés entrar a Pinceles!');
+    } catch (_) {
+      // El formulario queda disponible para reintentar.
+    } finally {
+      boton.disabled = false;
     }
-    
-    try { localStorage.setItem('mi_nombre', match); } catch(e){} 
-    STATE.miNombre = match; 
-    STATE.tab = "estado"; 
-    render();
-    try { await api('SYNC'); } catch(e){} 
-    render();
   };
 }
+
+async function actualizarVentasAlVolver() {
+  const enVentas = () => STATE.miNombre && (STATE.economiaOn
+    ? STATE.ecoArea === 'feria' && STATE.ecoTab === 'ventas'
+    : STATE.tab === 'ventas');
+  if (!enVentas()) return;
+  try {
+    await api('SYNC', {}, { silenciosa: true });
+    if (enVentas() && !document.getElementById('modalRoot').firstElementChild) {
+      const ventaEnFoco = document.activeElement?.dataset.ventaFila;
+      render();
+      if (ventaEnFoco !== undefined) enfocarFilaVenta(ventaEnFoco);
+    }
+  } catch (_) {}
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) void actualizarVentasAlVolver();
+});
 
 /* ============================= INIT ============================= */
 (async function init(){
