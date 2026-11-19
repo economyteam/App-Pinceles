@@ -113,6 +113,9 @@ function aplicarDB(db) {
   if (db.config && typeof db.config === 'object' && Object.keys(db.config).length) {
     STATE.config = { ...DEFAULT_CONFIG, ...Object.fromEntries(
       Object.entries(db.config).filter(([, v]) => v !== null && v !== undefined && v !== '')
+  if(data.cocinaDescuentos) STATE.cocinaDescuentos = data.cocinaDescuentos;
+  if(data.inventario) STATE.inventario = data.inventario;
+  if(data.comprasMision) STATE.comprasMision = data.comprasMision;
     ) };
   }
   if (db.sesiones && typeof db.sesiones === 'object') STATE.sesiones = db.sesiones;
