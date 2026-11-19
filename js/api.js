@@ -77,11 +77,9 @@ async function procesarMutaciones() {
         }
       } catch (e) {
         console.error(`No se guardó ${operacion.action}:`, e);
-        // No continuamos con operaciones dependientes si una falló.
         mutacionesPendientes = [];
         fallo = true;
         try {
-          // Un error de red no garantiza que el servidor NO haya guardado.
           aplicarDB(await solicitarAPI('SYNC'));
         } catch (syncError) {
           console.error('Tampoco se pudo reconciliar con Google:', syncError);
@@ -113,9 +111,6 @@ function aplicarDB(db) {
   if (db.config && typeof db.config === 'object' && Object.keys(db.config).length) {
     STATE.config = { ...DEFAULT_CONFIG, ...Object.fromEntries(
       Object.entries(db.config).filter(([, v]) => v !== null && v !== undefined && v !== '')
-  if(data.cocinaDescuentos) STATE.cocinaDescuentos = data.cocinaDescuentos;
-  if(data.inventario) STATE.inventario = data.inventario;
-  if(data.comprasMision) STATE.comprasMision = data.comprasMision;
     ) };
   }
   if (db.sesiones && typeof db.sesiones === 'object') STATE.sesiones = db.sesiones;
