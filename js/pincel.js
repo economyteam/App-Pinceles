@@ -15,18 +15,9 @@ function renderTabEstado(main){
 }
 
 function guardarCambioVentaAuto(venta, prevVentas, msg) {
-  const payload = {
-    cambios: [{
-      id: venta.id,
-      estado: venta.estado,
-      metodoPago: venta.metodoPago || "",
-      recibidoPor: venta.recibidoPor || "",
-      retirado: !!venta.retirado
-    }]
-  };
   render();
   if (msg) toast(msg);
-  apiBackground('BULK_UPDATE_VENTAS', payload, () => {
+  apiBackground('EDIT_VENTA', venta, () => {
     STATE.ventas = prevVentas;
     render();
   });
