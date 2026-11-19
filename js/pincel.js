@@ -14,6 +14,66 @@ function renderTabEstado(main){
   main.innerHTML = `<h2 class="section-title">Mi estado en la feria</h2><div class="stat-grid"><div class="stat-box"><div class="stat-num">${docenas}</div><div class="stat-label">Docenas vendidas</div></div><div class="stat-box gold"><div class="stat-num">${horas.toFixed(1)}</div><div class="stat-label">Horas trabajadas</div></div></div><div class="card" style="margin-top:16px; text-align:center;"><div class="li-sub" style="margin-bottom:6px;">Aporte al mínimo de misión</div><span class="badge ${min && min.pagado ? 'badge-ok':'badge-pend'}">${min && min.pagado ? 'Mínimo abonado' : 'Mínimo pendiente'}</span></div><p class="muted" style="text-align:center; margin-top:14px;">¡Seguí así, Pincel! Cada docena y cada hora suman un montón para la misión 🎨🥟</p>`;
 }
 
+function guardarCambioVentaAuto(venta, prevVentas, msg) {
+  const payload = {
+    cambios: [{
+      id: venta.id,
+      estado: venta.estado,
+      metodoPago: venta.metodoPago || "",
+      recibidoPor: venta.recibidoPor || "",
+      retirado: !!venta.retirado
+    }]
+  };
+  render();
+  if (msg) toast(msg);
+  apiBackground('BULK_UPDATE_VENTAS', payload, () => {
+    STATE.ventas = prevVentas;
+    render();
+  });
+}
+
+function abrirModalMetodoPagoRapido(venta, onConfirm, onCancel) {
+  const root = document.getElementById('modalRoot');
+  const receptores = (typeof RECEPTORES !== 'undefined' && Array.isArray(RECEPTORES)) ? RECEPTORES : [];
+  root.innerHTML = `
+    <div class="overlay" id="ovPagoRapido">
+      <div class="sheet">
+        <span class="close-x" id="closePagoRapido">✕</span>
+        <h3 style="margin-bottom:4px;">Confirmar pago</h3>
+        <p class="muted" style="margin-top:0; font-size:12px;">${escapeHTML(venta.cliente)} · ¿Cómo le pagaste a Economía?</p>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
+          <button class="btn btn-primary" id="btnRapidoTransf">💳 Transferencia</button>
+          <button class="btn btn-outline" id="btnRapidoEfec">💵 Efectivo</button>
+        </div>
+        <div id="boxReceptoresRapido" style="display:none; margin-top:14px; padding-top:12px; border-top:1px solid #EEE1C4;">
+          <p class="muted" style="font-size:12px; margin:0 0 8px;">¿A quién le entregaste el efectivo?</p>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            ${receptores.map(r => `<button class="btn btn-gold btn-sm btn-rec-rapido" data-rec="${escapeHTML(r)}">${escapeHTML(r)}</button>`).join("")}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const cerrar = () => { root.innerHTML = ""; if (onCancel) onCancel(); };
+  document.getElementById('closePagoRapido').onclick = cerrar;
+  document.getElementById('ovPagoRapido').onclick = (e) => { if (e.target.id === 'ovPagoRapido') cerrar(); };
+
+  document.getElementById('btnRapidoTransf').onclick = () => {
+    root.innerHTML = "";
+    onConfirm("Transferencia", "");
+  };
+  document.getElementById('btnRapidoEfec').onclick = () => {
+    document.getElementById('boxReceptoresRapido').style.display = 'block';
+  };
+  document.querySelectorAll('.btn-rec-rapido').forEach(b => {
+    b.onclick = () => {
+      root.innerHTML = "";
+      onConfirm("Efectivo", b.dataset.rec);
+    };
+  });
+}
+
 function renderTabVentas(main){
   const mias = misVentas(STATE.miNombre).slice().reverse(), impagas = mias.filter(v=>v.estado==='Falta Pagar');
   const adeudaDocs = impagas.reduce((a,v)=>a + (Number(v.docenas)||0), 0), adeudaMeds = impagas.reduce((a,v)=>a + (Number(v.medias)||0), 0);
@@ -27,7 +87,7 @@ function renderTabVentas(main){
     <p class="muted" style="text-align:center; margin-top:12px; font-size:11.5px;">Podés ir transfiriendo el dinero de tus ventas a <b>${escapeHTML(STATE.config.alias ?? DEFAULT_CONFIG.alias)}</b> (Paulina Rocío García) o pagar todo junto al final.</p>
     
     <h2 class="section-title" style="margin-top:20px;">Mis clientes</h2>
-    <p class="muted" style="font-size:11px; margin:-5px 0 10px 4px;">${cerradas ? 'Marcá las casillas de Pagado o Retirado y confirmá abajo.' : 'Tocá el nombre para editar cantidades, o marcá las casillas y confirmá abajo.'}</p>
+    <p class="muted" style="font-size:11px; margin:-5px 0 10px 4px;">${cerradas ? 'Marcá las casillas de Pagado o Retirado (se guarda automáticamente).' : 'Tocá el nombre para editar cantidades, o marcá las casillas (se guarda automáticamente).'}</p>
     
     <div class="card">
       ${mias.length===0 ? `<div class="empty">Todavía no registraste ninguna venta.</div>` : `
@@ -53,7 +113,6 @@ function renderTabVentas(main){
             </div>
           </div>
         `).join("")}
-        <button class="btn btn-gold" id="btnConfirmarCambiosVentas" style="margin-top:14px; display:none;">Confirmar cambios</button>
       `}
     </div>
   `;
@@ -66,88 +125,41 @@ function renderTabVentas(main){
     });
   }
 
-  const btnConf = document.getElementById('btnConfirmarCambiosVentas');
-  if(!btnConf) return;
-
-  const checkDiff = () => {
-    let hayCambios = false;
-    mias.forEach(v => {
-      const chkP = document.querySelector(`.chk-venta-pagado[data-id="${v.id}"]`);
-      const chkR = document.querySelector(`.chk-venta-retirado[data-id="${v.id}"]`);
-      const pActual = v.estado === 'Pagado';
-      const rActual = !!v.retirado;
-      if((chkP && chkP.checked !== pActual) || (chkR && chkR.checked !== rActual)) hayCambios = true;
-    });
-    btnConf.style.display = hayCambios ? 'inline-flex' : 'none';
-  };
-
-  document.querySelectorAll('.chk-venta-pagado, .chk-venta-retirado').forEach(chk => {
-    chk.onchange = checkDiff;
+  document.querySelectorAll('.chk-venta-retirado').forEach(chk => {
+    chk.onchange = () => {
+      const venta = STATE.ventas.find(x => String(x.id) === String(chk.dataset.id));
+      if (!venta) return;
+      const prevVentas = snapshot(STATE.ventas);
+      venta.retirado = chk.checked;
+      guardarCambioVentaAuto(venta, prevVentas, chk.checked ? 'Marcado como retirado ✅' : 'Retiro desmarcado');
+    };
   });
 
-  btnConf.onclick = () => {
-    const nuevosPagados = [];
-    const cambiosDirectos = [];
-
-    mias.forEach(v => {
-      const chkP = document.querySelector(`.chk-venta-pagado[data-id="${v.id}"]`);
-      const chkR = document.querySelector(`.chk-venta-retirado[data-id="${v.id}"]`);
-      const pNuevo = chkP ? chkP.checked : (v.estado === 'Pagado');
-      const rNuevo = chkR ? chkR.checked : !!v.retirado;
-      const pViejo = v.estado === 'Pagado';
-      const rViejo = !!v.retirado;
-
-      if(pNuevo !== pViejo || rNuevo !== rViejo){
-        if(pNuevo && !pViejo){
-          nuevosPagados.push({ id: v.id, retirado: rNuevo });
-        } else {
-          cambiosDirectos.push({
-            id: v.id,
-            estado: pNuevo ? 'Pagado' : 'Falta Pagar',
-            metodoPago: pNuevo ? v.metodoPago : null,
-            recibidoPor: pNuevo ? v.recibidoPor : null,
-            retirado: rNuevo
-          });
-        }
+  document.querySelectorAll('.chk-venta-pagado').forEach(chk => {
+    chk.onchange = () => {
+      const venta = STATE.ventas.find(x => String(x.id) === String(chk.dataset.id));
+      if (!venta) return;
+      if (chk.checked) {
+        abrirModalMetodoPagoRapido(
+          venta,
+          (metodo, receptor) => {
+            const prevVentas = snapshot(STATE.ventas);
+            venta.estado = 'Pagado';
+            venta.metodoPago = metodo;
+            venta.recibidoPor = receptor || null;
+            guardarCambioVentaAuto(venta, prevVentas, 'Pago guardado ✅');
+          },
+          () => { chk.checked = false; }
+        );
+      } else {
+        const prevVentas = snapshot(STATE.ventas);
+        venta.estado = 'Falta Pagar';
+        venta.metodoPago = null;
+        venta.recibidoPor = null;
+        guardarCambioVentaAuto(venta, prevVentas, 'Marcado como falta pagar');
       }
-    });
-
-    const aplicarYGuardar = (metodo, quien) => {
-      const prevVentas = snapshot(STATE.ventas);
-      const todosLosCambios = [...cambiosDirectos];
-      nuevosPagados.forEach(np => {
-        todosLosCambios.push({
-          id: np.id,
-          estado: 'Pagado',
-          metodoPago: metodo,
-          recibidoPor: quien,
-          retirado: np.retirado
-        });
-      });
-
-      todosLosCambios.forEach(c => {
-        const item = STATE.ventas.find(x => x.id === c.id);
-        if(item){
-          item.estado = c.estado;
-          item.metodoPago = c.metodoPago;
-          item.recibidoPor = c.recibidoPor;
-          item.retirado = c.retirado;
-        }
-      });
-
-      toast("Cambios guardados ✅");
-      render();
-      apiBackground('BULK_UPDATE_VENTAS', { cambios: todosLosCambios }, () => { STATE.ventas = prevVentas; });
     };
-
-    if(nuevosPagados.length > 0){
-      openModalMetodoPago('¿Cómo pagaste las ventas marcadas?', (metodo, quien) => {
-        aplicarYGuardar(metodo, quien);
-      });
-    } else if(cambiosDirectos.length > 0){
-      aplicarYGuardar(null, null);
-    }
-  };
+  });
 }
 window.openModalVenta = (idEdit = null) => {
   const root = document.getElementById('modalRoot'); 
