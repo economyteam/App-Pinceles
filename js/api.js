@@ -145,4 +145,13 @@ function aplicarDB(db) {
   if (db.docenasCocinar !== undefined && db.docenasCocinar !== null) {
     STATE.docenasCocinar = Number(db.docenasCocinar) || 0;
   }
+  if (db.cocinaDescuentos && typeof db.cocinaDescuentos === 'object') {
+    STATE.cocinaDescuentos = db.cocinaDescuentos;
+  }
+  if (db.inventario && typeof db.inventario === 'object') {
+    STATE.inventario = db.inventario;
+  }
+  if (db.comprasMision && typeof db.comprasMision === 'object') {
+    STATE.comprasMision = db.comprasMision;
+  }
 }
