@@ -14,21 +14,56 @@ function render(){
 }
 
 function renderSelector(){
-  document.getElementById('bottomNav').innerHTML = ""; document.getElementById('topTitle').textContent = "Pinceles"; document.getElementById('topSub').textContent = "La app ignaciana";
+  document.getElementById('bottomNav').innerHTML = ""; 
+  document.getElementById('topTitle').textContent = "Pinceles"; 
+  document.getElementById('topSub').textContent = "La app ignaciana";
   document.getElementById('main').innerHTML = `
-    <div class="selector-wrap"><img src="logo.jpg" alt="Logo Pinceles" class="logo-inicio"><h1>¡Hola, Pincel!</h1><p class="tag">Elegí tu nombre para empezar</p><input list="lista-pinceles" id="selNombre" placeholder="Buscá tu nombre..." autocomplete="off"><datalist id="lista-pinceles">${STATE.pinceles.map(n=>`<option value="${escapeHTML(n)}">`).join("")}</datalist><button class="btn btn-primary" id="btnEntrar" style="margin-top:6px;">Iniciar Sesión</button></div>
+    <div class="selector-wrap">
+      <img src="logo.jpg" alt="Logo Pinceles" class="logo-inicio">
+      <h1>¡Hola, Pincel!</h1>
+      <p class="tag">Elegí tu nombre para empezar</p>
+      <input list="lista-pinceles" id="selNombre" placeholder="Buscá tu nombre o escribilo..." autocomplete="off">
+      <datalist id="lista-pinceles">${STATE.pinceles.map(n=>`<option value="${n}">`).join("")}</datalist>
+      <button class="btn btn-primary" id="btnEntrar" style="margin-top:6px;">Iniciar Sesión</button>
+      <p class="muted" style="font-size:11.5px; margin-top:14px;">¿Sos nuevo/a y no estás en la lista? Escribí tu <b>Nombre y Apellido</b> y tocá Iniciar Sesión para sumarte.</p>
+    </div>
   `;
+  
   document.getElementById('btnEntrar').onclick = async ()=>{
     const v = document.getElementById('selNombre').value.trim();
     if(!v){ toast("Escribí o elegí tu nombre"); return; }
-    const match = STATE.pinceles.find(p => p.trim().toLowerCase() === v.toLowerCase());
-    if(!match){ toast("Perdón! tu nombre no está cargado, comunicate con alguien del EconomyTeam", true); return; }
-    try { localStorage.setItem('mi_nombre', match); } catch(e){} STATE.miNombre = match; STATE.tab = "estado"; render();
-    try { await api('SYNC'); } catch(e) { toast('No se pudieron actualizar los datos.', true); }
+    
+    let match = STATE.pinceles.find(p => p.trim().toLowerCase() === v.toLowerCase());
+    
+    if(!match){
+      // Pone en mayúscula la primera letra de cada palabra (Ej: "mati comello" -> "Mati Comello")
+      const nombreProlijo = v.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+      
+      if(nombreProlijo.split(" ").length < 2){
+        toast("Por favor escribí tu Nombre y Apellido completos", true);
+        return;
+      }
+
+      const seguro = confirm(`"${nombreProlijo}" no está en la lista.\n\n¿Sos un Pincel nuevo y querés agregarte con este nombre? (Si ya estabas, tocá Cancelar y buscate en la lista desplegable).`);
+      if(!seguro) return;
+
+      try {
+        await api('ADD_PINCEL', { nombre: nombreProlijo });
+        match = nombreProlijo;
+        toast("¡Bienvenido/a! Ya quedaste en la lista 🎉");
+      } catch(e) {
+        return;
+      }
+    }
+    
+    try { localStorage.setItem('mi_nombre', match); } catch(e){} 
+    STATE.miNombre = match; 
+    STATE.tab = "estado"; 
+    render();
+    try { await api('SYNC'); } catch(e){} 
     render();
   };
 }
-
 
 /* ============================= INIT ============================= */
 (async function init(){
