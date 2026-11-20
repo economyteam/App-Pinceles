@@ -259,9 +259,9 @@ function renderEcoVentas(main){
     <div class="card estado-ventas" style="background:${cerradas ? '#FBE7DA' : '#E8F3E8'}; border:1.5px solid ${cerradas ? '#B4551D' : 'var(--oliva)'};">
       <div>
         <div style="font-weight:800; font-size:13.5px; color:${cerradas ? '#B4551D' : 'var(--oliva)'};">${cerradas ? '🔒 Ventas de Pinceles CERRADAS' : '🟢 Ventas de Pinceles ABIERTAS'}</div>
-        <div style="font-size:11px; opacity:.85;">${cerradas ? 'Solo pueden marcar pagos y retiros.' : 'Pueden anotar y editar ventas.'}</div>
+        <div style="font-size:11px; opacity:.85;">${cerradas ? 'Pueden eliminar ventas y marcar pagos y retiros.' : 'Pueden anotar y editar ventas.'}</div>
       </div>
-      <button class="btn btn-sm" id="btnToggleVentas" style="width:auto; padding:8px 12px; font-size:12px; background:${cerradas ? 'var(--oliva)' : 'var(--rojo)'}; color:white; white-space:nowrap;">
+      <button type="button" class="btn btn-sm" id="btnToggleVentas" aria-haspopup="dialog" style="width:auto; padding:8px 12px; font-size:12px; background:${cerradas ? 'var(--oliva)' : 'var(--rojo)'}; color:white; white-space:nowrap;">
         ${cerradas ? 'Reabrir ventas' : 'Cerrar ventas'}
       </button>
     </div>
@@ -334,18 +334,7 @@ function renderEcoVentas(main){
   };
   mostrarDetalle();
 
-  document.getElementById('btnToggleVentas').onclick = async () => {
-    const accion = cerradas ? "reabrir" : "cerrar";
-    if(!confirm(`¿Seguro que querés ${accion} las ventas para todos los Pinceles?`)) return;
-    try {
-      const respuesta = await api('SET_VENTAS_CERRADAS', { cerradas: !cerradas, idMision: idMisionActual(STATE.historial) });
-      if (!respuesta.config || STATE.config.ventasCerradas === cerradas) {
-        toast('Google todavía no confirmó el cambio. Intentá de nuevo.', true); return;
-      }
-      render();
-      toast(STATE.config.ventasCerradas ? 'Ventas cerradas.' : 'Ventas reabiertas.');
-    } catch (_) {}
-  };
+  document.getElementById('btnToggleVentas').onclick = () => abrirConfirmacionEstadoVentas(!cerradas);
 
   document.getElementById('btnGuardarMisas').onclick = ()=>{
     const prevMisas = snapshot(STATE.ventasMisas);
@@ -359,6 +348,62 @@ function renderEcoVentas(main){
     toast("Guardando datos…"); render();
     apiBackground('SET_SYS', { key: 'ventas_misas', value: STATE.ventasMisas }, ()=>{ STATE.ventasMisas = prevMisas; });
   };
+}
+
+function abrirConfirmacionEstadoVentas(cerrarVentas) {
+  const root = document.getElementById('modalRoot');
+  const accion = cerrarVentas ? 'Cerrar ventas' : 'Reabrir ventas';
+  const descripcion = cerrarVentas
+    ? 'Se bloqueará el registro y la edición de pedidos para todos los Pinceles. Podrán seguir eliminando pedidos y marcando pagos y retiros.'
+    : 'Todos los Pinceles podrán volver a registrar y editar pedidos.';
+  const idMision = idMisionActual(STATE.historial);
+  root.innerHTML = `<dialog class="sheet sheet-confirmar-venta estado-ventas-dialogo" aria-labelledby="tituloEstadoVentas" aria-describedby="descripcionEstadoVentas">
+    <h3 id="tituloEstadoVentas">¿${accion}?</h3>
+    <p id="descripcionEstadoVentas">${descripcion}</p>
+    <p class="estado-ventas-respuesta" role="status"></p>
+    <div class="venta-confirmar-acciones">
+      <button type="button" class="btn btn-outline" id="cancelarEstadoVentas" autofocus>Cancelar</button>
+      <button type="button" class="btn btn-primary${cerrarVentas ? '' : ' estado-ventas-reabrir'}" id="confirmarEstadoVentas">${accion}</button>
+    </div>
+  </dialog>`;
+
+  const dialogo = root.querySelector('dialog');
+  const cancelar = dialogo.querySelector('#cancelarEstadoVentas');
+  const confirmar = dialogo.querySelector('#confirmarEstadoVentas');
+  const mensaje = dialogo.querySelector('[role="status"]');
+  cancelar.onclick = () => dialogo.close();
+  dialogo.addEventListener('cancel', event => {
+    if (confirmar.disabled) event.preventDefault();
+  });
+  dialogo.addEventListener('close', () => {
+    dialogo.remove();
+    document.getElementById('btnToggleVentas')?.focus({ preventScroll: true });
+  });
+
+  confirmar.onclick = async () => {
+    if (confirmar.disabled) return;
+    confirmar.disabled = cancelar.disabled = true;
+    dialogo.setAttribute('closedby', 'none');
+    mensaje.textContent = 'Guardando…';
+    try {
+      const respuesta = await api('SET_VENTAS_CERRADAS', { cerradas: cerrarVentas, idMision }, { silenciosa: true });
+      if (!respuesta.config || STATE.config.ventasCerradas !== cerrarVentas) {
+        mensaje.textContent = 'Google todavía no confirmó el cambio. Intentá de nuevo.';
+        return;
+      }
+      dialogo.close();
+      render();
+      toast(cerrarVentas ? 'Ventas cerradas.' : 'Ventas reabiertas.');
+    } catch (error) {
+      mensaje.textContent = error.code ? error.message : 'No se pudo guardar el cambio. Intentá de nuevo.';
+    } finally {
+      confirmar.disabled = cancelar.disabled = false;
+      dialogo.removeAttribute('closedby');
+      if (dialogo.open) confirmar.focus();
+    }
+  };
+
+  dialogo.showModal();
 }
 
 /* --------------------- FERIA: CONTROL DOCENAS --------------------- */
@@ -379,36 +424,37 @@ function renderEcoControlDocenas(main){
     }
   });
 
-  const arrCrudas = Object.entries(crudasMap).sort((a,b)=>a[0].localeCompare(b[0]));
-  const arrCocidas = Object.entries(cocidasMap).sort((a,b)=>a[0].localeCompare(b[0]));
   const hechoEnRango = (valor, max) => Math.min(max, Math.max(0, Number(valor) || 0));
+  const prepararFilas = (mapa, tipo) => Object.entries(mapa).map(([p, tot]) => {
+    const key = `${tipo}_${p}`;
+    const hecho = STATE.cocinaDescuentos[key] || { d: 0, m: 0 };
+    const restD = tot.d - hechoEnRango(hecho.d, tot.d);
+    const restM = tot.m - hechoEnRango(hecho.m, tot.m);
+    const listoTodo = restD === 0 && restM === 0;
+    return { p, tot, key, restD, restM, listoTodo };
+  }).sort((a, b) => Number(a.listoTodo) - Number(b.listoTodo) || a.p.localeCompare(b.p));
 
-  const calcTotales = (arr, tipoKey) => {
+  const filasCrudas = prepararFilas(crudasMap, 'Crudas');
+  const filasCocidas = prepararFilas(cocidasMap, 'Cocidas');
+
+  const calcTotales = (filas) => {
     let totD = 0, totM = 0, restD = 0, restM = 0;
-    arr.forEach(([p, tot]) => {
-      const h = STATE.cocinaDescuentos[`${tipoKey}_${p}`] || {d:0, m:0};
+    filas.forEach(({ tot, restD: faltanD, restM: faltanM }) => {
       totD += tot.d; totM += tot.m;
-      restD += tot.d - hechoEnRango(h.d, tot.d);
-      restM += tot.m - hechoEnRango(h.m, tot.m);
+      restD += faltanD; restM += faltanM;
     });
     return { totD, totM, restD, restM };
   };
 
-  const tCr = calcTotales(arrCrudas, 'Crudas');
-  const tCo = calcTotales(arrCocidas, 'Cocidas');
+  const tCr = calcTotales(filasCrudas);
+  const tCo = calcTotales(filasCocidas);
 
-  const renderTablaControl = (arr, tipoKey, colorBorde, titulo) => {
+  const renderTablaControl = (filas, tipoKey, colorBorde, titulo) => {
     let rowsHTML = "";
-    if(arr.length === 0){
+    if(filas.length === 0){
       rowsHTML = `<div class="empty">No hay pedidos registrados.</div>`;
     } else {
-      rowsHTML = arr.map(([p, tot]) => {
-        const key = `${tipoKey}_${p}`;
-        const hecho = STATE.cocinaDescuentos[key] || {d:0, m:0};
-        const restD = tot.d - hechoEnRango(hecho.d, tot.d);
-        const restM = tot.m - hechoEnRango(hecho.m, tot.m);
-        const listoTodo = restD === 0 && restM === 0;
-
+      rowsHTML = filas.map(({ p, tot, key, restD, restM, listoTodo }) => {
         return `
           <div class="list-item" style="flex-direction:column; align-items:stretch; gap:8px; opacity:${listoTodo ? '0.55' : '1'};">
             <div class="row-between cocina-fila-titulo">
@@ -472,8 +518,8 @@ function renderEcoControlDocenas(main){
     </div>
     <p class="muted" style="font-size:11.5px; margin:-4px 0 12px;">Tocá <b>−1</b> a medida que vayan armando cada docena o media docena hasta llegar a 0 (tocá +1 si te pasaste).</p>
     <div class="eco-columnas">
-      ${renderTablaControl(arrCrudas, 'Crudas', 'var(--rojo)', 'Detalle crudas')}
-      ${renderTablaControl(arrCocidas, 'Cocidas', 'var(--dorado)', 'Detalle cocidas')}
+      ${renderTablaControl(filasCrudas, 'Crudas', 'var(--rojo)', 'Detalle crudas')}
+      ${renderTablaControl(filasCocidas, 'Cocidas', 'var(--dorado)', 'Detalle cocidas')}
     </div>
   `;
 
